@@ -1,0 +1,13 @@
+# 换行策略：这个项目同时要在 Windows 与 Linux 上跑，几类文件的换行必须钉死，
+# 否则会出现「Windows 上好好的批处理到了 Linux 报 bad interpreter」这类低级故障。
+
+# Windows 批处理/命令脚本用 CRLF：cmd 的 goto / 标签在纯 LF 下不保险
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# shell 脚本必须 LF：CRLF 会让 Linux 报 `bad interpreter: /bin/bash^M`
+*.sh text eol=lf
+
+# Inno Setup 脚本不做任何转换：它必须保持「UTF-8 with BOM」，
+# 无 BOM 时 Inno 6 会按 ANSI 解析，中文文案与中文文件名会变乱码并编译失败。
+*.iss -text

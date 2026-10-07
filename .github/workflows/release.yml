@@ -1,0 +1,144 @@
+# ============================================================================
+#  juwen 发布流水线
+#
+#  push 一个 v* tag（首发 v0.1.0）→ 在 Windows / Linux 上各自构建并打包，
+#  然后创建一个 GitHub Release，附件：
+#    · juwen-<ver>-win-x64-setup.exe   ← Windows 安装包（首选）
+#    · juwen_<ver>_amd64.deb           ← Linux 安装包（首选）
+#    · juwen-<ver>-win-x64.zip         ← Windows 免安装备用
+#    · juwen-<ver>-linux-x64.tar.gz    ← Linux 免安装备用
+#    · SHA256SUMS                      ← 覆盖上面所有产物
+#
+#  ⚠ Windows 安装包**未做代码签名**，用户首次运行会看到 SmartScreen 警告
+#    （「更多信息 → 仍要运行」）。没有代码签名证书就无法避免，别假装没有。
+#
+#  为什么 CI 不跑 npm test：里面的 e2e-check 需要一个跑在 5178 的服务、
+#  还依赖本机样本文件；CI 用 npm run test:offline（纯离线）打底，
+#  再由打包脚本自检「staged 应用能起来 + /api/health 200 + 首页 HTML」。
+#
+#  ⚠ package-lock.json 必须与 package.json 保持同步，否则 npm ci 会直接
+#    EUSAGE 退出。改了依赖后在本机跑一次 `npm install --include=optional`
+#    并把新的 package-lock.json 提交上来。
+# ============================================================================
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --include=optional
+
+      - name: 构建前端
+        run: npm run build
+
+      - name: 离线测试
+        run: npm run test:offline
+
+      # Inno Setup 用于编译 .exe。windows runner 多数已预装，没有才装（choco 装一次约 1 分钟）。
+      - name: 准备 Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (Test-Path $iscc) { Write-Host "Inno Setup 已预装：$iscc" }
+          else { choco install innosetup -y --no-progress }
+
+      - name: 打包（.exe + 便携 zip + 自检）
+        run: npm run package:release -- --os win --version ${{ github.ref_name }}
+
+      # 只上传真正的发布物与日志；staging 目录（几百 MB）是 .zip/.exe 的内容，不必重复上传。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: juwen-win
+          path: |
+            release/*.exe
+            release/*.zip
+            release/*.log
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --include=optional
+
+      - name: 构建前端
+        run: npm run build
+
+      - name: 离线测试
+        run: npm run test:offline
+
+      # .deb 由 dpkg-deb 产出；ubuntu runner 自带，无需额外安装
+      - name: 打包（.deb + 便携 tar.gz + 自检）
+        run: npm run package:release -- --os linux --version ${{ github.ref_name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: juwen-linux
+          path: |
+            release/*.deb
+            release/*.tar.gz
+            release/*.log
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      # merge-multiple 会把两个 artifact 摊平到同一个目录；
+      # 两个平台都会产出名为 SHA256SUMS 的文件，同名会互相覆盖，
+      # 所以下面重新生成一份覆盖全部产物的合并校验和。
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+          merge-multiple: true
+
+      - name: 合并 SHA256SUMS
+        working-directory: dist-artifacts
+        run: |
+          rm -f SHA256SUMS
+          for f in *.exe *.deb *.zip *.tar.gz; do
+            [ -f "$f" ] && sha256sum "$f"
+          done > SHA256SUMS
+          echo '--- SHA256SUMS ---'
+          cat SHA256SUMS
+          echo '--- 附件清单 ---'
+          ls -lh
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist-artifacts/*.exe
+            dist-artifacts/*.deb
+            dist-artifacts/*.tar.gz
+            dist-artifacts/*.zip
+            dist-artifacts/SHA256SUMS

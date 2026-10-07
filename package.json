@@ -21,6 +21,8 @@
     "test:web": "vite-node --config web/vite.config.js scripts/smoke-render.mjs && vite-node --config web/vite.config.js scripts/active-highlight-test.mjs && vite-node --config web/vite.config.js scripts/settings-ui-test.mjs && vite-node --config web/vite.config.js scripts/library-ui-test.mjs && vite-node --config web/vite.config.js scripts/activity-timeline-test.mjs && node scripts/deep-followup-test.mjs",
     "test:ai": "node scripts/e2e-check.mjs --with-ai && node scripts/policy-compliance-test.mjs",
     "test:stability": "node scripts/stream-stability-test.mjs 5",
+    "test:offline": "node scripts/parser-test.mjs && node scripts/policy-extract-test.mjs && node scripts/search-test.mjs && node scripts/agent-loop-test.mjs && npm run test:web",
+    "package:release": "node scripts/package-release.mjs",
     "demo:data": "node scripts/gen-demo-data.mjs",
     "demo": "node scripts/gen-demo-page.mjs"
   },

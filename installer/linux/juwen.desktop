@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=juwen
+Comment=智能解读工作台
+Exec=/opt/juwen/juwen.sh
+Terminal=true
+Categories=Office;Utility;

@@ -13,6 +13,10 @@ npm-debug.log*
 tmp/
 tmp_*
 
+# 打包产物（release/ 里是 staging + 安装包，动辄几百 MB，绝不入库）
+release/
+.tmp-esbuild/
+
 # 编辑器
 .vscode/
 .idea/

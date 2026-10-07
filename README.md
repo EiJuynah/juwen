@@ -146,6 +146,58 @@ npm run test:stability # 流式稳定性：3 场景 × 5 轮，确认答案不�
 > `agent-loop-test.mjs`（过渡轮把被丢弃的正文说成「已生成答案」）与
 > `activity-timeline-test.mjs`（SSE 兜底事件覆盖服务端 done 快照，导致来源清单与检索次数永不显示）。
 
+## 发布（Release）
+
+推一个 `v*` tag，GitHub Actions 会在 Windows / Linux 上各自构建并创建 Release，附件为：
+
+| 附件 | 说明 |
+|---|---|
+| `juwen-<ver>-win-x64-setup.exe` | Windows 安装包（**首选**），按用户安装到 `%LOCALAPPDATA%\Programs\juwen`，**不弹 UAC** |
+| `juwen_<ver>_amd64.deb` | Linux 安装包（**首选**），装到 `/opt/juwen`，带 `/usr/bin/juwen` 与桌面项 |
+| `juwen-<ver>-win-x64.zip` / `juwen-<ver>-linux-x64.tar.gz` | 免安装备用（解压即用） |
+| `SHA256SUMS` | 覆盖以上所有产物的校验和 |
+
+发版三步：
+
+```bash
+# 1) 改版本号（package.json 的 version，与 tag 一致）
+# 2) 提交
+git add -A && git commit -m "release: v0.1.1"
+git push
+# 3) 打 tag 并推 → 触发流水线
+git tag v0.1.1 && git push origin v0.1.1
+```
+
+### 安装后是什么样
+
+- **数据都在用户目录，不在安装目录**（安装目录可能只读）：Windows `%APPDATA%\juwen`、Linux `${XDG_DATA_HOME:-~/.local/share}/juwen`，
+  下面有 `.env`（配置）与 `data/`（上传的文档 + 批注）。
+- **首次运行**会自动把 `.env.example` 复制成 `<数据根>/.env`，用户把 `DEEPSEEK_API_KEY` 填进去即可；不填也能打开界面，只是 AI 解释不可用。
+- **卸载不会删除数据目录**（批注与文档留在原处）。
+- 启动器用的是**内置 Node 运行时**（`runtime/node.exe` / `runtime/node`），用户**不需要自己装 Node**。
+- ⚠ Windows 安装包**未做代码签名**，首次运行会有 SmartScreen 提示（「更多信息 → 仍要运行」）。没有代码签名证书就无法消除。
+
+### 本地打包（不依赖 CI）
+
+```bash
+npm run build
+npm run package:release -- --os win --version v0.1.0     # Windows
+npm run package:release -- --os linux --version v0.1.0   # Linux（需在 Linux 上跑）
+```
+
+产物落在 `release/`（**已 gitignore**）：staging 目录、便携包、`SHA256SUMS`。
+脚本最后会**自检**：用内置运行时把 staged 应用真起一次，断言 `/api/health` 返回 `ok:true`、`GET /` 返回首页 HTML、`DATA_DIR` 按预期创建。
+本机若没装 Inno Setup / 没装 `dpkg-deb`，脚本会**明确打印「已跳过 .exe / .deb」**，只产出便携包——`.exe` 与 `.deb` 的真实构建发生在 CI。
+
+### 为什么 CI 不跑 `npm test`
+
+`npm test` 里的 `e2e-check` 需要一个跑在 5178 上的服务、还依赖本机样本文件。CI 用 `npm run test:offline`
+（解析 / 结构化 / 检索 / agent 循环 / 前端，全部离线）打底，再由打包自检覆盖「打出来的东西真能起来」。
+完整的契约与真实模型测试仍在本机跑：`npm test`、`npm run test:ai`。
+
+> 改依赖后请在本机跑一次 `npm install --include=optional` 并提交 `package-lock.json`——
+> lock 与 package.json 不同步时 `npm ci` 会直接失败，CI 会在第一步就红。
+
 ## 接口
 
 ### `POST /api/ai/stream`

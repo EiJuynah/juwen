@@ -347,7 +347,7 @@ app.get(/^\/(?!api\/).*/, (req, res, next) => {
 // 明确的 404，避免落到 express 默认的 HTML 错误页
 app.use((_req, res) => res.status(404).json({ error: 'Not Found' }));
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[桥接层] 已启动 http://localhost:${PORT}`);
   console.log(`[桥接层] 模型=${runtimeSettings.model} key=${API_KEY ? '已配置' : '未配置(缺失)'}`);
   const opt = PROFILE_OPTIONS.find((o) => o.value === runtimeSettings.profile);
@@ -364,4 +364,17 @@ app.listen(PORT, () => {
         '或设 bocha 并填 BOCHA_API_KEY）',
     );
   }
+});
+
+// 端口被占用时别抛栈：桌面启动器（双击）再点一次就会走到这里，
+// 这不是故障——应用多半已经在跑，正常退出即可，避免用户以为崩了。
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `[桥接层] 端口 ${PORT} 已被占用：可能 juwen 已经在运行，直接打开 http://localhost:${PORT} 即可；` +
+        '也可用 PORT 换端口。',
+    );
+    process.exit(0);
+  }
+  throw err;
 });
