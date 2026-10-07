@@ -124,9 +124,9 @@ scripts/
 ## 测试
 
 ```bash
-npm test               # 离线全量：解析 + 结构化 + 检索 + agent 循环 + 接口 + 前端（520 项）
+npm test               # 离线全量：解析 + 结构化 + 检索 + agent 循环 + 接口 + 前端（576 项）
 npm run test:parser    # 多格式解析 + 条文结构化（74 项，无需起服务）
-npm run test:search    # 检索层 + DeepSeek 原生 provider + agent 循环（208 项，全离线）
+npm run test:search    # 检索层（含补正文）+ DeepSeek 原生 provider + agent 循环（264 项，全离线）
 npm run test:files     # 文档管理 API：上传 / 目录 / 批注（42 项，需起桥接层）
 npm run test:api       # 接口契约（32 项，需起桥接层）
 npm run test:web       # 前端逻辑、设置页、AI 过程展示与卡片折叠（206 项，jsdom）
@@ -134,7 +134,7 @@ npm run test:ai        # 连真实模型：接口 + 两档行为对比（需 API
 npm run test:stability # 流式稳定性：3 场景 × 5 轮，确认答案不为空
 ```
 
-`npm test` 的 520 项构成：解析 41、条文结构化 33、检索 158、agent 循环 50、接口契约 32、
+`npm test` 的 576 项构成：解析 41、条文结构化 33、检索 214、agent 循环 50、接口契约 32、
 前端 206（冒烟 11 / 划词高亮 11 / 设置页 52 / 文档库 53 / AI 过程展示 74 / 6 层追问 5）。
 
 前端测试在 jsdom 中真实挂载 React 与 ProseMirror，能抓到 curl 看不见的运行期错误：hooks 顺序违规、未捕获异常导致的白屏、锚点解析失败、设置开关不生效、SSE 事件解析丢字段。jsdom 无排版引擎，测试里对 `getClientRects` 打了零尺寸桩，仅为让选区链路能跑通。
@@ -281,6 +281,7 @@ POST https://api.deepseek.com/anthropic/v1/messages
 设计要点：
 
 - **只走权威源**：默认白名单 12 个官方域名（gov.cn / npc.gov.cn / cppcc.gov.cn / news.cn / xinhuanet.com / people.com.cn / qstheory.cn / gmw.cn / cctv.com / chinanews.com.cn / china.com.cn / legaldaily.com.cn），供应商返回 20 条、过完白名单可能只剩 3 条；滤空的场景如实说「未检索到权威来源」，**绝不放行非权威结果凑数**。
+- **只给元数据，正文我们自己抓**：DeepSeek 原生搜索的返回里**只有** `title / url / page_age`（正文在 `encrypted_content` 里、解不开；`citations[].cited_text` 实测为空）。真机上表现为模型如实回答「检索结果只返回了标题，没有正文内容」。因此桥接层在过滤/去重/截断后，**自己对来源页抓一次正文**补进摘要：只抓白名单内的 http/https、拒绝 localhost/私网、`redirect: 'error'`、单页 4s 超时 / 256KB 上限、并发 3、每次查询最多抓 3 条、每条留 800 字；**失败就留空、绝不阻塞回答**。实测真机来源 0.1～0.5s 拿到 500～800 字正文。
 - **绝不降级**：原生搜索若没有返回结构化结果块，按错误处理，而不是从模型正文里抓 URL 凑数。
 - **永不抛错到用户层**：超时（8s）、取消、provider 异常都收敛成 `{ok:false, reason}`，整轮解释照常出答案，只是没有外部资料。
 - **按需才搜**：模型自己决定要不要调，不是每段都搜。
@@ -289,7 +290,8 @@ POST https://api.deepseek.com/anthropic/v1/messages
 - **过程可见**：每一步检索的查询词、命中条数、来源都通过 `step` 事件推到前端，生成中自动展开、结束后折叠；最终答案下方另有一份去重后的**来源清单**，可点开原文出处核对。
 - **轮次收口**：最多 3 轮；最后一轮摘掉 `tools`，这是唯一可靠的「逼它作答」手段（模型对不相关结果会继续换词再搜）。单轮最多真的执行 3 次检索。
 
-配置见 `.env.example`：`SEARCH_PROVIDER=none|deepseek|bocha|mock`、`DEEPSEEK_SEARCH_BASE_URL`、`DEEPSEEK_SEARCH_MODEL`、`BOCHA_API_KEY`、`SEARCH_ENABLED`、`SEARCH_ALLOWED_DOMAINS`。
+配置见 `.env.example`：`SEARCH_PROVIDER=none|deepseek|bocha|mock`、`DEEPSEEK_SEARCH_BASE_URL`、`DEEPSEEK_SEARCH_MODEL`、`BOCHA_API_KEY`、`SEARCH_ENABLED`、`SEARCH_ALLOWED_DOMAINS`；
+补正文可调 `SEARCH_FETCH_PAGES=0`（关闭）、`SEARCH_FETCH_MAX`、`SEARCH_FETCH_TIMEOUT_MS`、`SEARCH_FETCH_MAX_BYTES`。
 
 > 与 DSH 内核的关系：DSH 自带的检索插件 `@deepseek-ai/dsh-web-search-deepseek` 走的就是上面这条 Anthropic 兼容路径（它另外支持 `x-dsh-auth-token` 的账号登录态）。本项目不复用其账号 token，而是直接用 API Key 调同一端点，自包含、可迁移。
 
@@ -315,7 +317,8 @@ POST https://api.deepseek.com/anthropic/v1/messages
 - **讲透档**：术语当场解释；补充内容带「※ 补充」类标注；**不再出现**「该问题需要参考其他条款」这类回避话术；
   落款为「供理解参考，不作办事依据」；两档输出确有差异
 - **联网链路（`SEARCH_PROVIDER=deepseek`）**：真机一轮实测 **3 轮循环 / 6 次检索 / 去重后 26 条权威来源 / 10 步时间线**，
-  落款与档位一致；来源清单可点开原始出处
+  落款与档位一致；来源清单可点开原始出处。补正文实测：同一查询采纳 5 条中抓回 2～3 条页面正文（0.1～0.5s，528～800 字），
+  模型随即改成「据资料 1（嘉峪关，2025 年 3 月）、资料 2（上海普陀，2025 年 7 月）…」这种带内容的引用
 - 单次解释耗时约 6～15 秒（含推理），可见答案 380～610 字
 
 注意 `reasoning_content` 长度波动极大：同一段落实测在 **0～10053 字**之间跳
@@ -426,6 +429,17 @@ POST https://api.deepseek.com/anthropic/v1/messages
     → **来源清单永远不显示，摘要里的「检索 M 次」和耗时永远不显示**。
     修复：记 `sawDone`，只在没收到 `done` 时才兜底；截断兜底语义不变。
     这条是新增的 `scripts/activity-timeline-test.mjs`（jsdom 喂真实 SSE 帧）抓出来的。
+
+14. **原生搜索只给元数据，模型只能看到标题**（`server/search/`）
+    真机反馈：AI 回答里写「检索结果只返回了标题，没有正文内容」。探针
+    `node wb/probe-native-search-raw.mjs` 打出原始响应才看清：
+    `web_search_result` 条目字段只有 `type / title / url / encrypted_content / page_age`，
+    **没有正文字段**；而唯一的摘要来源 `text.citations[].cited_text` 实测 **0 条**
+    （`max_tokens` 1024 与 4096 一样）。也就是说，回灌给作答模型的确实只有标题。
+    修复：新增 `server/search/page-text.js`（HTML→文本、charset 嗅探与 GBK 回落、受限抓取器），
+    在过滤/去重/截断后自己抓来源页正文补进 `snippet`——
+    只抓白名单内 http/https、拒绝私网、`redirect: 'error'`、4s 超时、256KB 上限、并发 3、每次最多 3 条，
+    失败留空不阻塞。抓完真机重跑，模型开始引用页面里的具体时间与做法。
 
 ### 环境相关的坑
 

@@ -30,6 +30,7 @@ import { DEFAULT_ALLOWED_DOMAINS, isAllowedUrl, hostOf, allowedDomainsFromEnv } 
 import { createBochaProvider } from './providers/bocha.js';
 import { createMockProvider } from './providers/mock.js';
 import { createDeepseekNativeProvider } from './providers/deepseek-native.js';
+import { createPageFetcher } from './page-text.js';
 
 /** 检索层的显式常量，测试与文档都以此为准 */
 export const SEARCH_LIMITS = {
@@ -45,6 +46,21 @@ export const SEARCH_LIMITS = {
   /** 相同 query 的缓存时长：agent 循环里模型可能重复发起同一查询 */
   cacheTtlMs: 5 * 60 * 1000,
   maxCacheEntries: 80,
+  /*
+   * 以下五项是「补正文」的边界。原因见 page-text.js：
+   * DeepSeek 原生搜索只给 title/url/page_age（正文在 encrypted_content 里解不开），
+   * citations 实测也没有 cited_text，所以 snippet 得我们自己去抓来源页。
+   */
+  /** 一次查询最多抓几条（只抓 snippet 为空/过短的） */
+  pageFetchMax: 3,
+  /** 单条写进 snippet 的纯文本上限 */
+  pageFetchChars: 800,
+  /** 单页抓取超时 */
+  pageFetchTimeoutMs: 4000,
+  /** 单页最多读取字节数（超过即停，不读完整包） */
+  pageFetchMaxBytes: 256 * 1024,
+  /** 同时抓取的请求上限 */
+  pageFetchConcurrency: 3,
 };
 
 /** 需要剥掉的跟踪参数，它们会让同一篇文章产生多个 URL */
@@ -190,6 +206,39 @@ export function buildContext(results) {
   ].join('\n');
 }
 
+/** snippet 多短才算「没有摘要」——低于这个长度就值得去抓正文 */
+const MIN_SNIPPET_CHARS = 40;
+
+/**
+ * 给 snippet 为空/过短的结果补来源页正文。
+ *
+ * 就地修改 `results[i].snippet`，返回真正填上的条数。只处理前 `max` 条，
+ * 并发由抓取器自己的信号量控制。任何失败都只是「这条没摘要」——
+ * 检索本身依然是成功的，**绝不抛错、不阻塞其它条目**。
+ */
+async function fillMissingSnippets(results, { fetchText, signal, max, maxChars, log = () => {} }) {
+  const targets = results
+    .filter((it) => !it.snippet || it.snippet.length < MIN_SNIPPET_CHARS)
+    .slice(0, Math.max(0, Number(max) || 0));
+  if (!targets.length) return 0;
+
+  let filled = 0;
+  await Promise.all(
+    targets.map(async (it) => {
+      try {
+        const text = await fetchText(it.url, { signal });
+        const clean = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!clean) return;
+        it.snippet = clean.slice(0, Math.max(1, Number(maxChars) || 1));
+        filled++;
+      } catch (err) {
+        log(`[补正文] ${it.url} 失败：${String(err?.message || err).slice(0, 120)}`);
+      }
+    }),
+  );
+  return filled;
+}
+
 /**
  * 创建检索服务。
  *
@@ -197,7 +246,9 @@ export function buildContext(results) {
  * @param {object} opts.provider            必须实现 search(query, {count, signal})
  * @param {string[]} [opts.allowedDomains]  为空且 open=false 时用默认权威源
  * @param {boolean} [opts.open]             true 表示关闭白名单过滤
- * @param {object} [opts.limits]            覆盖 SEARCH_LIMITS
+ * @param {object} [opts.limits]            覆盖 SEARCH_LIMITS（含 pageFetch* 各项）
+ * @param {boolean} [opts.fetchPageText]    true（默认）时给 snippet 为空的结果补来源页正文
+ * @param {object} [opts.pageFetcher]       注入抓取器（须实现 fetchText(url, {signal})），供测试
  * @param {(msg:string)=>void} [opts.log]
  */
 export function createSearchService({
@@ -205,11 +256,26 @@ export function createSearchService({
   allowedDomains = DEFAULT_ALLOWED_DOMAINS,
   open = false,
   limits = {},
+  fetchPageText = true,
+  pageFetcher = null,
   log = () => {},
 } = {}) {
   const cfg = { ...SEARCH_LIMITS, ...limits };
   const allowed = Array.isArray(allowedDomains) ? allowedDomains : DEFAULT_ALLOWED_DOMAINS;
   const cache = new Map();
+
+  // 抓正文是「锦上添花」，默认按 SEARCH_LIMITS 的边界建一个；测试可整体注入
+  const fetcher =
+    pageFetcher ||
+    (fetchPageText
+      ? createPageFetcher({
+          log,
+          timeoutMs: cfg.pageFetchTimeoutMs,
+          maxBytes: cfg.pageFetchMaxBytes,
+          concurrency: cfg.pageFetchConcurrency,
+        })
+      : null);
+  const pageTextEnabled = Boolean(fetchPageText && fetcher);
 
   function cacheGet(key) {
     const hit = cache.get(key);
@@ -238,11 +304,17 @@ export function createSearchService({
     configured: Boolean(provider?.configured),
     open,
     allowedDomains: open ? [] : allowed,
+    /** 是否会给结果补来源页正文（见 page-text.js） */
+    pageText: pageTextEnabled,
     limits: cfg,
   });
 
   /**
    * 执行一次检索。
+   *
+   * 返回前会按需给 `results[i].snippet` 补上来源页正文（见 page-text.js 与
+   * createSearchService 的 fetchPageText / pageFetcher）：原生搜索只给
+   * title+url，不抓正文的话模型只能看到标题。补正文失败不影响 ok。
    *
    * @param {string} rawQuery
    * @param {{signal?:AbortSignal, count?:number, skipCache?:boolean}} [opts]
@@ -307,6 +379,18 @@ export function createSearchService({
       const unique = dedupe(kept);
       const results = unique.slice(0, want);
 
+      // 补正文：原生搜索只给 title+url，snippet 得自己去抓来源页。
+      // 放在「过滤→去重→截断」之后，只补前 N 条空摘要的；失败就留空。
+      const filled = pageTextEnabled
+        ? await fillMissingSnippets(results, {
+            fetchText: fetcher.fetchText,
+            signal: ctrl.signal,
+            max: cfg.pageFetchMax,
+            maxChars: cfg.pageFetchChars,
+            log,
+          })
+        : 0;
+
       const out = {
         ok: true,
         results,
@@ -317,7 +401,8 @@ export function createSearchService({
       };
       if (out.filteredAll) out.reason = 'no-authoritative-source';
       log(
-        `[检索] "${query}" 取回 ${out.fetched} 条 → 白名单滤除 ${out.filtered} 条 → 采纳 ${results.length} 条`,
+        `[检索] "${query}" 取回 ${out.fetched} 条 → 白名单滤除 ${out.filtered} 条 → 采纳 ${results.length} 条` +
+          (pageTextEnabled ? ` → 补正文 ${filled} 条` : ''),
       );
       // 只缓存成功结果；失败不缓存，便于下次重试
       cacheSet(cacheKey, out);
@@ -347,6 +432,10 @@ export function createSearchService({
  *   BOCHA_API_KEY / BOCHA_BASE_URL          仅在 SEARCH_PROVIDER=bocha 时需要
  *   DEEPSEEK_SEARCH_BASE_URL / DEEPSEEK_SEARCH_MODEL   可选，覆盖原生搜索的端点与模型
  *   DEEPSEEK_API_KEY                        原生搜索复用同一把 key；缺失时 provider.configured=false
+ *   SEARCH_FETCH_PAGES      0 = 关闭「自查来源页补正文」（默认开）
+ *   SEARCH_FETCH_MAX        一次查询最多抓几条，默认 3
+ *   SEARCH_FETCH_TIMEOUT_MS 单页抓取超时，默认 4000
+ *   SEARCH_FETCH_MAX_BYTES  单页最多读取字节数，默认 262144
  */
 export function createSearchServiceFromEnv(env = process.env, log = () => {}) {
   const { domains, open } = allowedDomainsFromEnv(env.SEARCH_ALLOWED_DOMAINS);
@@ -368,7 +457,26 @@ export function createSearchServiceFromEnv(env = process.env, log = () => {}) {
     provider = createMockProvider({ delayMs: Number(env.SEARCH_MOCK_DELAY_MS || 0) });
   }
 
-  const service = createSearchService({ provider, allowedDomains: domains, open, log });
+  // 补正文开关与边界。SEARCH_FETCH_PAGES 未设 → 默认开；=0 关闭
+  const fetchPageText =
+    env.SEARCH_FETCH_PAGES === undefined || env.SEARCH_FETCH_PAGES === null
+      ? true
+      : String(env.SEARCH_FETCH_PAGES).trim() !== '0';
+
+  const positive = (v) => {
+    if (v === undefined || v === null || String(v).trim() === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
+  const limits = {};
+  const maxFetch = positive(env.SEARCH_FETCH_MAX);
+  if (maxFetch !== undefined) limits.pageFetchMax = maxFetch;
+  const pageTimeout = positive(env.SEARCH_FETCH_TIMEOUT_MS);
+  if (pageTimeout !== undefined) limits.pageFetchTimeoutMs = pageTimeout;
+  const pageBytes = positive(env.SEARCH_FETCH_MAX_BYTES);
+  if (pageBytes !== undefined) limits.pageFetchMaxBytes = pageBytes;
+
+  const service = createSearchService({ provider, allowedDomains: domains, open, limits, fetchPageText, log });
   // 只有真正配好的 provider 才算「具备联网能力」：
   // 建了 provider 对象但缺 key（configured=false）时，开关不应该点得动。
   service.enabled = Boolean(provider?.configured);

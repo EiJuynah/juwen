@@ -135,3 +135,31 @@ body:    { model: "deepseek-v4-flash", max_tokens: 1024,
 **归属**：新增/修改都落在 `server/search/**` 与 `scripts/search-test.mjs`（task-1 的写权范围内，同一写者），
 `.env.example` 与 README 的说明由 Lead 补。
 
+## 8. 追加需求：检索结果补正文（实测：原生搜索只给元数据）
+
+**实测事实**（探针 `wb/probe-native-search-raw.mjs`，查询「组织部门 统战部门 协作配合机制 联席会议」）：
+
+```
+web_search_result 条目字段并集: type, title, url, encrypted_content, page_age
+带正文字段（text/content/snippet/page_content）的条目：0/10
+text 块 citations 合计 0 条，其中带 cited_text 的 0 条      ← 唯一的 snippet 来源为空
+max_tokens=1024 与 4096 表现一致
+块类型序列: thinking → server_tool_use → web_search_tool_result → thinking → text
+```
+
+即 DeepSeek 原生搜索**只返回元数据**，页面正文只存在于「这次搜索调用里模型自己写的摘要」中；
+而 provider 只从 `citations[].cited_text` 取摘要 → 回灌给作答模型的只有 `title + url` →
+模型如实回答「检索结果只返回了标题，没有正文内容」。**结论：正文要我们自己抓。**
+
+**方案**：新增 `server/search/page-text.js`（HTML→文本、charset 嗅探与 GBK 回落、受限抓取器），
+在 `searchWeb()` 的白名单过滤/去重/截断**之后**，对 snippet 为空的前 N 条结果抓正文补进 `snippet`。
+
+硬约束：
+- 只允许 `http/https`，拒绝 localhost/私网地址，`redirect: 'error'`（SSRF 兜底，白名单之外再加一层）。
+- 超时（默认 4s）、单页上限（默认 256KB，累积到上限即停）、并发（默认 3）、每次查询最多抓 3 条、
+  每条最多留 800 字纯文本；**永不抛错**，失败就留空，`ok` 仍为 true。
+- **不覆盖已有 snippet**（bocha/mock 的摘要更可信，也不浪费请求）。
+- 开关：`SEARCH_FETCH_PAGES=0` 关闭；`SEARCH_FETCH_MAX` / `SEARCH_FETCH_TIMEOUT_MS` / `SEARCH_FETCH_MAX_BYTES` 可调。
+- 抓取结果随现有 5 分钟结果缓存一起缓存，同一 query 不重复抓。
+
+

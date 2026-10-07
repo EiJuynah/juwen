@@ -26,6 +26,7 @@ import {
 import { createMockProvider, MOCK_RESULTS } from '../server/search/providers/mock.js';
 import { createBochaProvider, extractItems } from '../server/search/providers/bocha.js';
 import { createDeepseekNativeProvider } from '../server/search/providers/deepseek-native.js';
+import { htmlToText, decodeHtmlBuffer, createPageFetcher, isPrivateHost } from '../server/search/page-text.js';
 
 let pass = 0;
 let fail = 0;
@@ -157,7 +158,9 @@ console.log('\n▸ canSearch 闸门');
 // ─────────────────────────────────────────────── 检索主流程
 console.log('\n▸ searchWeb（mock provider）');
 {
-  const svc = createSearchService({ provider: createMockProvider() });
+  // 本文件所有既有用例都必须完全离线：searchWeb 默认会给空摘要的结果抓来源页正文，
+  // 这里显式关掉（新增的补正文用例另行注入桩抓取器）。断言本身一条未动。
+  const svc = createSearchService({ provider: createMockProvider(), fetchPageText: false });
   const r = await svc.searchWeb('非公有制经济人士 界定');
 
   check('检索成功', r.ok === true);
@@ -184,7 +187,7 @@ console.log('\n▸ searchWeb（mock provider）');
       return createMockProvider().search(q, o);
     },
   };
-  const svc = createSearchService({ provider: counting });
+  const svc = createSearchService({ provider: counting, fetchPageText: false });
   const a = await svc.searchWeb('政协章程 内容');
   const b = await svc.searchWeb('政协章程 内容');
   check('provider 只被调用 1 次', calls === 1, `实际 ${calls}`);
@@ -209,6 +212,7 @@ console.log('\n▸ searchWeb（mock provider）');
         site: '中国政府网',
       })),
     }),
+    fetchPageText: false,
   });
   const r = await svc.searchWeb('测试条数上限', { count: 999 });
   check('条数被卡在 maxResults', r.results.length === SEARCH_LIMITS.maxResults, `实际 ${r.results.length}`);
@@ -234,7 +238,7 @@ console.log('\n▸ searchWeb（mock provider）');
 }
 {
   // 关闭白名单过滤：非权威源应被放行
-  const svc = createSearchService({ provider: createMockProvider(), open: true });
+  const svc = createSearchService({ provider: createMockProvider(), open: true, fetchPageText: false });
   const r = await svc.searchWeb('关闭过滤时');
   check('open=true 时 5 条全留', r.results.length === 5, `实际 ${r.results.length}`);
   check('open=true 时 filtered=0', r.filtered === 0);
@@ -249,6 +253,7 @@ console.log('\n▸ searchWeb（mock provider）');
       ],
     }),
     allowedDomains: ['moe.gov.cn'],
+    fetchPageText: false,
   });
   const r = await svc.searchWeb('自定义白名单');
   check('自定义白名单只留 moe.gov.cn', r.results.length === 1 && r.results[0].url.includes('moe.gov.cn'));
@@ -292,6 +297,7 @@ console.log('\n▸ 降级：不抛错');
         return createMockProvider().search(q, o);
       },
     },
+    fetchPageText: false,
   });
   const first = await svc.searchWeb('失败后重试');
   const second = await svc.searchWeb('失败后重试');
@@ -327,7 +333,7 @@ console.log('\n▸ 降级：不抛错');
   check('外部取消 → reason:aborted', r.reason === 'aborted', r.reason);
 }
 {
-  const svc = createSearchService({ provider: createMockProvider() });
+  const svc = createSearchService({ provider: createMockProvider(), fetchPageText: false });
   const bare = createSearchService({ provider: { name: 'none', configured: false, search: async () => [] } });
   check(
     'provider.configured=false → provider-unconfigured',
@@ -705,11 +711,405 @@ console.log('\n▸ createSearchServiceFromEnv（deepseek 分支）');
       ],
     }),
   });
-  const svc = createSearchService({ provider: native });
+  const svc = createSearchService({ provider: native, fetchPageText: false });
   const r = await svc.searchWeb('白名单回归');
   check('native 结果过白名单后只剩权威源', r.ok === true && r.results.length === 1 && r.results[0].url.includes('gov.cn/keep'), JSON.stringify(r.results.map((x) => x.url)));
   check('非权威源计入 filtered', r.filtered === 1, String(r.filtered));
   check('native provider 的检索没有被跳过', seen?.url?.endsWith('/messages'));
+}
+
+// ─────────────────────────────────────────────── 抓取来源页正文：HTML → 文本
+console.log('\n▸ htmlToText');
+{
+  check(
+    '剥离 script/style 及其内容',
+    (() => {
+      const t = htmlToText('<div>甲<script>var a=1;</script><style>.x{color:red}</style>乙</div>');
+      return t.includes('甲') && t.includes('乙') && !t.includes('var a') && !t.includes('color:red');
+    })(),
+  );
+  check(
+    '剥离注释、noscript 与 svg',
+    (() => {
+      const t = htmlToText('<p>正文<!-- 隐藏注释 --></p><noscript>noscript内容</noscript><svg><path d="x"/></svg>');
+      return !t.includes('隐藏注释') && !t.includes('noscript内容') && t.includes('正文');
+    })(),
+  );
+  check(
+    '实体解码（命名 + 十进制 + 十六进制）',
+    htmlToText('<p>a&nbsp;b &amp; c &lt;d&gt; &quot;e&quot; &#39;f&#39; &#x4e2d;</p>') === 'a b & c <d> "e" \'f\' 中',
+    JSON.stringify(htmlToText('<p>a&nbsp;b &amp; c &lt;d&gt; &quot;e&quot; &#39;f&#39; &#x4e2d;</p>')),
+  );
+  check('未知实体原样保留', htmlToText('a&unknown;b') === 'a&unknown;b', htmlToText('a&unknown;b'));
+  check('块级标签产生换行', htmlToText('<p>第一段</p><p>第二段</p>') === '第一段\n第二段', JSON.stringify(htmlToText('<p>第一段</p><p>第二段</p>')));
+  check('<br> 产生换行', htmlToText('上<br>下') === '上\n下', JSON.stringify(htmlToText('上<br>下')));
+  check('行内连续空白归一为单空格', htmlToText('<div>  多 \t  空白  </div>') === '多 空白', JSON.stringify(htmlToText('<div>  多 \t  空白  </div>')));
+  check('连续空行归一为一个换行', htmlToText('<p>甲</p><p></p><p>乙</p>') === '甲\n乙', JSON.stringify(htmlToText('<p>甲</p><p></p><p>乙</p>')));
+  check('全角空格也归一', htmlToText('甲\u3000\u3000乙') === '甲 乙', JSON.stringify(htmlToText('甲\u3000\u3000乙')));
+  check('纯文本原样返回', htmlToText('就是一段话') === '就是一段话');
+}
+
+// ─────────────────────────────────────────────── 抓取来源页正文：编码识别
+console.log('\n▸ decodeHtmlBuffer');
+{
+  // GBK「中文」= D6 D0 CE C4；这两个字节序列不是合法 UTF-8，正好用来验证回落
+  const GBK_ZHONGWEN = Buffer.from([0xd6, 0xd0, 0xce, 0xc4]);
+  check('运行环境支持 GBK 解码', new TextDecoder('gbk').decode(GBK_ZHONGWEN) === '中文');
+
+  const utf8Doc = Buffer.from('<html><body>中文测试</body></html>', 'utf8');
+  const gbkDoc = Buffer.concat([
+    Buffer.from('<html><head><meta charset="gbk"></head><body>', 'latin1'),
+    GBK_ZHONGWEN,
+    Buffer.from('</body></html>', 'latin1'),
+  ]);
+  const gbkHttpEquiv = Buffer.concat([
+    Buffer.from('<html><head><meta http-equiv="Content-Type" content="text/html; charset=gbk"></head><body>', 'latin1'),
+    GBK_ZHONGWEN,
+    Buffer.from('</body></html>', 'latin1'),
+  ]);
+
+  check('① Content-Type 的 charset 优先', decodeHtmlBuffer(utf8Doc, 'text/html; charset=utf-8').includes('中文测试'));
+  check('① charset 别名 gb2312 → gb18030', decodeHtmlBuffer(gbkDoc, 'text/html; charset=gb2312').includes('中文'));
+  check('① charset 大小写不敏感（UTF8）', decodeHtmlBuffer(utf8Doc, 'text/html; Charset=UTF8').includes('中文测试'));
+  check('② meta charset 生效', decodeHtmlBuffer(gbkDoc, 'text/html').includes('中文'));
+  check('② meta http-equiv 形式生效', decodeHtmlBuffer(gbkHttpEquiv, '').includes('中文'));
+  check('③ 无声明但合法 UTF-8 → 严格 UTF-8', decodeHtmlBuffer(utf8Doc, '').includes('中文测试'));
+  check('④ 无声明且非 UTF-8 → GBK 回落', decodeHtmlBuffer(gbkDoc, '').includes('中文'));
+  check('未知 charset 走探测而非乱码', decodeHtmlBuffer(utf8Doc, 'text/html; charset=x-unknown').includes('中文测试'));
+  check('被截断的 UTF-8 尾巴不会误判成 GBK', decodeHtmlBuffer(utf8Doc.subarray(0, utf8Doc.length - 2), '').includes('中文测试'));
+}
+
+// ─────────────────────────────────────────────── 抓取来源页正文：抓取器
+console.log('\n▸ createPageFetcher');
+{
+  /** 造一个带流式 body 的假响应 */
+  const makeResponse = ({ chunks, contentType = 'text/html; charset=utf-8', status = 200 }) => {
+    const list = Array.isArray(chunks) ? chunks : [chunks];
+    const state = { reads: 0, canceled: false };
+    return {
+      state,
+      resp: {
+        ok: status >= 200 && status < 300,
+        status,
+        headers: { get: (k) => (String(k).toLowerCase() === 'content-type' ? contentType : null) },
+        body: {
+          getReader: () => ({
+            async read() {
+              state.reads++;
+              return state.reads <= list.length
+                ? { done: false, value: list[state.reads - 1] }
+                : { done: true, value: undefined };
+            },
+            async cancel() {
+              state.canceled = true;
+            },
+          }),
+        },
+      },
+    };
+  };
+  const bytes = (s) => new TextEncoder().encode(s);
+
+  // 正常抓取
+  {
+    let seen = null;
+    const { resp } = makeResponse({ chunks: [bytes('<html><body><p>正文内容在这里</p></body></html>')] });
+    const fetcher = createPageFetcher({
+      fetchImpl: async (url, init) => {
+        seen = { url, init };
+        return resp;
+      },
+    });
+    const text = await fetcher.fetchText('https://www.gov.cn/a.htm');
+    check('抓取并提取纯文本', text === '正文内容在这里', JSON.stringify(text));
+    check('GET 且 redirect=error', seen.init.method === 'GET' && seen.init.redirect === 'error', JSON.stringify({ m: seen.init.method, r: seen.init.redirect }));
+    check('带 signal 与 UA/accept', seen.init.signal instanceof AbortSignal && Boolean(seen.init.headers['user-agent']) && Boolean(seen.init.headers.accept));
+  }
+
+  // 非文本内容跳过
+  {
+    let called = 0;
+    const { resp } = makeResponse({ chunks: [bytes('%PDF-1.4')], contentType: 'application/pdf' });
+    const fetcher = createPageFetcher({ fetchImpl: async () => { called++; return resp; } });
+    check('非文本 content-type → 返回空串', (await fetcher.fetchText('https://www.gov.cn/a.pdf')) === '');
+    check('非文本也会先读响应（只是不解析）', called === 1);
+  }
+
+  // 非 2xx
+  {
+    const { resp } = makeResponse({ chunks: [bytes('err')], status: 500 });
+    const fetcher = createPageFetcher({ fetchImpl: async () => resp });
+    check('非 2xx → 返回空串', (await fetcher.fetchText('https://www.gov.cn/err')) === '');
+  }
+
+  // 抛错不外传
+  {
+    const fetcher = createPageFetcher({
+      fetchImpl: async () => {
+        throw new Error('网络炸了');
+      },
+    });
+    let threw = false;
+    let out = 'x';
+    try {
+      out = await fetcher.fetchText('https://www.gov.cn/boom');
+    } catch {
+      threw = true;
+    }
+    check('fetch 抛错不向外传播', threw === false && out === '');
+  }
+
+  // 超时（对方无视 signal，靠自管 AbortController 收敛）
+  {
+    const fetcher = createPageFetcher({ timeoutMs: 40, fetchImpl: () => new Promise(() => {}) });
+    const t0 = Date.now();
+    const out = await fetcher.fetchText('https://www.gov.cn/hang');
+    const cost = Date.now() - t0;
+    check('超时 → 返回空串且不卡死', out === '' && cost < 1500, `${cost}ms`);
+  }
+
+  // maxBytes：按上限截断，且不把整包读完
+  {
+    const big = Array.from({ length: 10 }, () => new Uint8Array(100).fill(0x61)); // 10 × 100 字节
+    const { resp, state } = makeResponse({ chunks: big });
+    const fetcher = createPageFetcher({ maxBytes: 250, fetchImpl: async () => resp });
+    const text = await fetcher.fetchText('https://www.gov.cn/big');
+    check('超过 maxBytes 按上限截断', text.length === 250, String(text.length));
+    check('到上限即停（只读 3 个 chunk，不全读）', state.reads === 3, String(state.reads));
+    check('提前取消剩余流', state.canceled === true);
+  }
+
+  // SSRF / 协议兜底：一律不发起 fetch
+  {
+    let called = 0;
+    const fetcher = createPageFetcher({ fetchImpl: async () => { called++; return makeResponse({ chunks: [bytes('x')] }).resp; } });
+    const denied = [];
+    for (const u of [
+      'http://127.0.0.1/x',
+      'http://10.0.0.1/x',
+      'http://192.168.1.1/x',
+      'http://172.16.0.1/x',
+      'http://169.254.1.1/x',
+      'http://localhost/x',
+      'http://foo.local/x',
+      'file:///etc/passwd',
+      'ftp://www.gov.cn/x',
+      'not a url',
+    ]) {
+      denied.push(await fetcher.fetchText(u));
+    }
+    check('本机/私网/非 http(s) 一律返回空串', denied.every((d) => d === ''));
+    check('被拒的 URL 完全不发起 fetch', called === 0, String(called));
+  }
+  check(
+    'isPrivateHost 边界',
+    isPrivateHost('127.0.0.1') &&
+      isPrivateHost('10.0.0.1') &&
+      isPrivateHost('172.16.0.1') &&
+      !isPrivateHost('172.32.0.1') &&
+      isPrivateHost('192.168.0.1') &&
+      isPrivateHost('169.254.1.1') &&
+      isPrivateHost('localhost') &&
+      isPrivateHost('x.local') &&
+      isPrivateHost('::1') &&
+      !isPrivateHost('www.gov.cn'),
+  );
+
+  // 缓存
+  {
+    let called = 0;
+    const { resp } = makeResponse({ chunks: [bytes('<p>缓存正文</p>')] });
+    const fetcher = createPageFetcher({ fetchImpl: async () => { called++; return resp; } });
+    await fetcher.fetchText('https://www.gov.cn/c');
+    const second = await fetcher.fetchText('https://www.gov.cn/c');
+    check('同 URL 命中缓存，只抓一次', called === 1 && second === '缓存正文');
+  }
+
+  // 并发上限
+  {
+    let active = 0;
+    let maxActive = 0;
+    const fetcher = createPageFetcher({
+      concurrency: 2,
+      fetchImpl: async () => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((r) => setTimeout(r, 10));
+        active--;
+        return makeResponse({ chunks: [bytes('<p>x</p>')] }).resp;
+      },
+    });
+    await Promise.all([1, 2, 3, 4].map((i) => fetcher.fetchText(`https://www.gov.cn/p${i}`)));
+    check('并发不超过 concurrency', maxActive <= 2 && maxActive >= 1, String(maxActive));
+  }
+
+  // 调用方 signal 已取消
+  {
+    const fetcher = createPageFetcher({ timeoutMs: 2000, fetchImpl: () => new Promise(() => {}) });
+    const ac = new AbortController();
+    ac.abort();
+    const out = await fetcher.fetchText('https://www.gov.cn/aborted', { signal: ac.signal });
+    check('调用方已取消 → 返回空串', out === '');
+  }
+}
+
+// ─────────────────────────────────────────────── 抓取来源页正文：searchWeb 集成
+console.log('\n▸ searchWeb 补正文');
+{
+  const mkProvider = (results) => createMockProvider({ results });
+  const longText = '正文'.repeat(600); // 1200 字，用来验证 800 字上限
+  const emptyResults = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      title: `第 ${i} 篇`,
+      url: `https://www.gov.cn/doc/${i}`,
+      snippet: '',
+      site: '中国政府网',
+    }));
+
+  // ① 空摘要被填上正文
+  {
+    const asked = [];
+    const pageFetcher = {
+      async fetchText(url) {
+        asked.push(url);
+        return longText;
+      },
+    };
+    const svc = createSearchService({ provider: mkProvider(emptyResults(2)), pageFetcher });
+    const r = await svc.searchWeb('补正文①');
+    check('空摘要被填上正文', r.results.every((x) => x.snippet.startsWith('正文')), JSON.stringify(r.results.map((x) => x.snippet.length)));
+    check('只对采纳的两条抓取', asked.length === 2 && asked[0].includes('/doc/0'), asked.join(','));
+    check('单条最多 800 字', r.results[0].snippet.length === 800, String(r.results[0].snippet.length));
+    check('检索仍视为成功', r.ok === true && r.cached === false);
+  }
+
+  // ② 已有 snippet：不抓取、不覆盖
+  {
+    let called = 0;
+    const original = '这是一条来自搜索服务商的现成摘要，长度足够，不该被覆盖，也不该浪费一次抓取请求。';
+    const svc = createSearchService({
+      provider: mkProvider([{ title: 'A', url: 'https://www.gov.cn/a', snippet: original, site: '中国政府网' }]),
+      pageFetcher: {
+        async fetchText() {
+          called++;
+          return '不该出现';
+        },
+      },
+    });
+    const r = await svc.searchWeb('补正文②');
+    check('已有 snippet 不被覆盖', r.results[0].snippet === original, r.results[0].snippet);
+    check('已有 snippet 不触发抓取', called === 0, String(called));
+  }
+
+  // ③ 抓取失败：ok 仍 true，snippet 留空
+  {
+    const svc = createSearchService({
+      provider: mkProvider(emptyResults(2)),
+      pageFetcher: {
+        async fetchText() {
+          return '';
+        },
+      },
+    });
+    const r = await svc.searchWeb('补正文③');
+    check('抓取失败仍 ok:true', r.ok === true && r.results.length === 2);
+    check('失败时 snippet 保持为空', r.results.every((x) => x.snippet === ''));
+
+    const svcThrow = createSearchService({
+      provider: mkProvider(emptyResults(1)),
+      pageFetcher: {
+        async fetchText() {
+          throw new Error('抓取器炸了');
+        },
+      },
+    });
+    let threw = false;
+    let rt = null;
+    try {
+      rt = await svcThrow.searchWeb('补正文③b');
+    } catch {
+      threw = true;
+    }
+    check('抓取器抛错也不向上传播', threw === false && rt.ok === true && rt.results[0].snippet === '');
+  }
+
+  // ④ fetchPageText:false → 完全不抓
+  {
+    let called = 0;
+    const svc = createSearchService({
+      provider: mkProvider(emptyResults(2)),
+      fetchPageText: false,
+      pageFetcher: {
+        async fetchText() {
+          called++;
+          return longText;
+        },
+      },
+    });
+    const r = await svc.searchWeb('补正文④');
+    check('fetchPageText:false 完全不抓', called === 0);
+    check('关闭后 snippet 保持为空', r.results.every((x) => x.snippet === ''));
+  }
+
+  // ⑤ pageFetchMax 只抓前 N 条
+  {
+    const asked = [];
+    const svc = createSearchService({
+      provider: mkProvider(emptyResults(4)),
+      limits: { pageFetchMax: 2 },
+      pageFetcher: {
+        async fetchText(url) {
+          asked.push(url);
+          return longText;
+        },
+      },
+    });
+    const r = await svc.searchWeb('补正文⑤');
+    check('只抓前 N 条（pageFetchMax=2）', asked.length === 2, String(asked.length));
+    check('前两条被填、后两条留空', r.results[0].snippet !== '' && r.results[1].snippet !== '' && r.results[2].snippet === '' && r.results[3].snippet === '');
+  }
+
+  // ⑥ 填好正文后的结果进结果缓存：同一 query 不重复抓页面
+  {
+    let called = 0;
+    const svc = createSearchService({
+      provider: mkProvider(emptyResults(2)),
+      pageFetcher: {
+        async fetchText() {
+          called++;
+          return longText;
+        },
+      },
+    });
+    const first = await svc.searchWeb('补正文⑥');
+    const second = await svc.searchWeb('补正文⑥');
+    check('第二次命中结果缓存', second.cached === true && first.cached === false);
+    check('同一 query 不重复抓页面', called === 2, String(called));
+    check('缓存里带着已填好的正文', second.results[0].snippet === first.results[0].snippet && second.results[0].snippet !== '');
+  }
+
+  // ⑦ 环境变量开关与调参
+  {
+    check(
+      'SEARCH_FETCH_PAGES=0 → 关闭补正文',
+      createSearchServiceFromEnv({ SEARCH_PROVIDER: 'mock', SEARCH_FETCH_PAGES: '0' }).describe().pageText === false,
+    );
+    check(
+      '默认开启补正文',
+      createSearchServiceFromEnv({ SEARCH_PROVIDER: 'mock' }).describe().pageText === true,
+    );
+    const tuned = createSearchServiceFromEnv({
+      SEARCH_PROVIDER: 'mock',
+      SEARCH_FETCH_MAX: '7',
+      SEARCH_FETCH_TIMEOUT_MS: '1234',
+      SEARCH_FETCH_MAX_BYTES: '4096',
+    });
+    check(
+      'SEARCH_FETCH_MAX / TIMEOUT_MS / MAX_BYTES 生效',
+      tuned.limits.pageFetchMax === 7 && tuned.limits.pageFetchTimeoutMs === 1234 && tuned.limits.pageFetchMaxBytes === 4096,
+      JSON.stringify({ max: tuned.limits.pageFetchMax, t: tuned.limits.pageFetchTimeoutMs, b: tuned.limits.pageFetchMaxBytes }),
+    );
+  }
 }
 
 console.log(`\n${fail === 0 ? '\x1b[32m全部通过\x1b[0m' : `\x1b[31m${fail} 项失败\x1b[0m`}：${pass} 通过 / ${fail} 失败\n`);
