@@ -6,8 +6,10 @@
 import fs from 'node:fs';
 import { parseDocument } from '../server/parsers/index.js';
 import { extractPolicy, findDuplicateIds, cnToNumber } from '../server/policy-extract.js';
+import { resolveSampleDoc, skipSample } from './lib/sample-doc.mjs';
 
-const SAMPLE = 'C:/Users/yujie/Desktop/工作/0个人资料/中国共产党统一战线工作条例.wps';
+// 样本路径：JUWEN_SAMPLE > test-fixtures/ > 开发机原路径；都没有则跳过相关断言
+const SAMPLE = resolveSampleDoc();
 
 let pass = 0;
 let fail = 0;
@@ -29,7 +31,9 @@ console.log('▸ 中文数字解析');
 }
 
 console.log('\n▸ 真实样本：统一战线工作条例');
-{
+if (!SAMPLE) {
+  skipSample('条文结构化抽取（真实条例）');
+} else {
   const buf = fs.readFileSync(SAMPLE);
   const parsed = await parseDocument(buf);
   const policy = extractPolicy(parsed.paragraphs, { title: '中国共产党统一战线工作条例' });

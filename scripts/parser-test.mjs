@@ -9,8 +9,10 @@
 import fs from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { parseDocument, detectFormat, FORMAT } from '../server/parsers/index.js';
+import { resolveSampleDoc, skipSample } from './lib/sample-doc.mjs';
 
-const SAMPLE = 'C:/Users/yujie/Desktop/工作/0个人资料/中国共产党统一战线工作条例.wps';
+// 样本路径：JUWEN_SAMPLE > test-fixtures/ > 开发机原路径；都没有则跳过相关断言
+const SAMPLE = resolveSampleDoc();
 
 let pass = 0;
 let fail = 0;
@@ -160,7 +162,9 @@ console.log('\n▸ 纯文本（UTF-8 / UTF-16 LE）');
 }
 
 console.log('\n▸ 真实样本：条例 .wps（Word97 二进制）');
-{
+if (!SAMPLE) {
+  skipSample('条例 .wps 解析（Word97 二进制）');
+} else {
   const buf = fs.readFileSync(SAMPLE);
   const detected = detectFormat(buf);
   check('嗅探为 ole-word（而非按扩展名误判）', detected.format === FORMAT.OLE_WORD, detected.format);

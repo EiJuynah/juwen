@@ -6,9 +6,11 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveSampleDoc, skipSample } from './lib/sample-doc.mjs';
 
 const BASE = `http://127.0.0.1:${process.env.PORT || 5178}`;
-const SAMPLE = 'C:/Users/yujie/Desktop/工作/0个人资料/中国共产党统一战线工作条例.wps';
+// 样本路径：JUWEN_SAMPLE > test-fixtures/ > 开发机原路径
+const SAMPLE = resolveSampleDoc();
 
 let pass = 0;
 let fail = 0;
@@ -16,6 +18,14 @@ const check = (name, ok, detail = '') => {
   if (ok) { pass++; console.log(`  \x1b[32m✓\x1b[0m ${name}`); }
   else { fail++; console.log(`  \x1b[31m✗\x1b[0m ${name}${detail ? ` — ${detail}` : ''}`); }
 };
+
+// 这个套件从「上传真实条例」开始，后面的目录/详情/批注/删除断言都依赖那份样本。
+// 没有样本时整段跳过（不算失败），否则 readFileSync 会直接抛 ENOENT。
+if (!SAMPLE) {
+  skipSample('文档管理 API 测试（需要真实条例样本）');
+  console.log('\n结果：0 通过 / 0 失败（已跳过）\n');
+  process.exit(0);
+}
 
 const api = async (method, url, body, headers = {}) => {
   const opts = { method, headers: { ...headers } };
