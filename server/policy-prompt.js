@@ -9,7 +9,11 @@
  * 只把过去的「约束开关 boolean」换成「档位字符串」。
  * 两档共用的内核不变：不编造原文没有的数字/日期/条件、模糊处列出多种理解、
  * 每处解释标注 [段落ID] 以便回查原文。
+ *
+ * System prompt 的组装统一走 `buildSystemPrompt()`，
+ * 不要再把 composition 散到调用方——那样没法离线单测。
  */
+import { TOOL_USAGE_PROMPT } from './search/tool.js';
 
 /** 默认档：讲透 —— 讲解者姿态 */
 export const EXPLAIN_SYSTEM_PROMPT = `
@@ -38,6 +42,29 @@ export const EXPLAIN_SYSTEM_PROMPT = `
 【输出格式】使用 Markdown。先给出一段不超过 3 行的核心解释，再以要点列表展开。
 正文末尾单独一行输出引用清单，格式为：
 > 依据：[段落ID] [段落ID]
+`.trim();
+
+/**
+ * 讲透档的「怎么讲」纪律。追加在 EXPLAIN_SYSTEM_PROMPT 之后；与上文冲突时以本段为准。
+ *
+ * 为什么单独一段：实测只靠上面的「讲什么」会各自催生一节内容（元讨论小节、
+ * 没人问的「什么情况下用得上」、同一句免责标 5 次、4 个字的术语摊成 6 节 800+ 字）。
+ * 上面的正文是冻结文案，不动；这里只补「怎么讲」的边界。
+ * 仅讲透档追加，严格依据档一字不加。
+ */
+export const EXPLAIN_STYLE_PROMPT = `
+【回答规范】上面规定讲什么，这一段规定怎么讲；两者冲突时以本段为准。
+1. 直接回答用户问的那一点。同一句里出现、且与所问内容直接相关的术语（例如问「两个维护」时的
+   「四个意识」「四个自信」），可以用一两句话顺带讲清——这对理解有帮助；但不要外延到句外的概念，
+   也不要为它们各起一节。
+2. 不做写作层面的元讨论——不解释「原文为什么这么写」「为什么只点到为止」「这类表述属于固定用语」。
+   讲清条款为什么这样规定、落在什么场景属于正文内容，用一两句带过即可，不单独列节。
+3. 「※ 补充，非原文」全篇最多标注一次（放在补充内容首次出现处），不逐条重复，也不再写
+   「以上均为补充说明」这类总结句。时效或不确定性提醒只能写成最后一个要点里的半句话，
+   不得自成段落、不得写成括号注——上文要求「主动说明可能已过时」时，按本条执行。
+4. 不写用户没问的章节（例如「什么情况下用得上」），除非用户确实在问使用场景。
+5. 篇幅：讲清即可，一般 300～700 字。不许为凑长度写复述句、过渡句或元讨论；
+   超过 700 字只允许是要点本身就多，或用户要求展开。用户说「详细讲讲」时才放开写长。
 `.trim();
 
 /**
@@ -84,6 +111,23 @@ export function systemPromptFor(profile) {
 /** 档位 → 落款 */
 export function disclaimerFor(profile) {
   return profile === 'strict' ? STRICT_DISCLAIMER : EXPLAIN_DISCLAIMER;
+}
+
+/**
+ * 组装 system prompt。顺序固定：档位正文 →（联网时）检索规范 →（讲透档）回答规范
+ *
+ * 这里是 composition 的唯一出处：调用方（server/index.js）不该再自己拼字符串，
+ * 否则没法离线单测「strict 到底带没带多余段落」。
+ * 追加规范只给讲透档；严格依据档保持 STRICT_SYSTEM_PROMPT 逐字节不变，
+ * 联网段也绝不给它（「严格依据档不联网」是硬承诺）。
+ *
+ * @param {{profile?:string, searchActive?:boolean}} o
+ */
+export function buildSystemPrompt({ profile = 'explain', searchActive = false } = {}) {
+  const parts = [systemPromptFor(profile)];
+  if (searchActive && profile !== 'strict') parts.push(TOOL_USAGE_PROMPT);
+  if (profile !== 'strict') parts.push(EXPLAIN_STYLE_PROMPT);
+  return parts.join('\n\n');
 }
 
 /**

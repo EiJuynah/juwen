@@ -5,11 +5,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseExplainRequest, maxTokensFor, LIMITS } from './validate.js';
 import {
-  systemPromptFor,
+  buildSystemPrompt,
   disclaimerFor,
   buildFollowupPrompt,
 } from './policy-prompt.js';
-import { TOOL_USAGE_PROMPT } from './search/tool.js';
 import { createSearchServiceFromEnv } from './search/index.js';
 import { runExplainLoop } from './agent-loop.js';
 import { createFileStore } from './files-store.js';
@@ -218,9 +217,9 @@ app.post('/api/ai/stream', async (req, res) => {
     profile !== 'strict' &&
     Boolean(searchService?.enabled);
 
-  const systemPrompt = searchActive
-    ? `${systemPromptFor(profile)}\n\n${TOOL_USAGE_PROMPT}`
-    : systemPromptFor(profile);
+  // 组装顺序（档位正文 → 联网时检索规范 → 讲透档回答规范）由 buildSystemPrompt 统一负责，
+  // 避免 composition 散在这里，也让「strict 到底带没带多余段落」可以离线单测
+  const systemPrompt = buildSystemPrompt({ profile, searchActive });
 
   const messages = [
     { role: 'system', content: systemPrompt },

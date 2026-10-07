@@ -8,6 +8,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  buildSystemPrompt,
+  EXPLAIN_SYSTEM_PROMPT,
+  EXPLAIN_STYLE_PROMPT,
+  STRICT_SYSTEM_PROMPT,
+} from '../server/policy-prompt.js';
+import { TOOL_USAGE_PROMPT } from '../server/search/tool.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -106,6 +113,43 @@ async function readSse(body) {
     }
   }
   return { status: resp.status, text, reasoning, started, done, streamError };
+}
+
+// ── 离线段：system prompt 组装不依赖服务端是否在跑，放最前面先跑
+console.log('[0] system prompt 组装（离线）');
+{
+  const explain = buildSystemPrompt({ profile: 'explain', searchActive: false });
+  check('explain 恰好是「档位正文 + 回答规范」', explain === `${EXPLAIN_SYSTEM_PROMPT}\n\n${EXPLAIN_STYLE_PROMPT}`);
+  check('explain 以档位正文开头', explain.startsWith(EXPLAIN_SYSTEM_PROMPT));
+  check('explain 以回答规范结尾', explain.endsWith(EXPLAIN_STYLE_PROMPT));
+  check('explain 不含 strict 的回避话术', !explain.includes('该问题需要参考其他条款'));
+  check('explain 不含 strict 档正文', !explain.includes(STRICT_SYSTEM_PROMPT));
+  check('explain 未联网时不带检索规范', !explain.includes(TOOL_USAGE_PROMPT));
+
+  const strict = buildSystemPrompt({ profile: 'strict', searchActive: false });
+  check('strict 逐字节等于 STRICT_SYSTEM_PROMPT', strict === STRICT_SYSTEM_PROMPT, `${strict.length} vs ${STRICT_SYSTEM_PROMPT.length}`);
+  check('strict 不含回答规范', !strict.includes(EXPLAIN_STYLE_PROMPT));
+  check('strict 不含讲透档正文', !strict.includes(EXPLAIN_SYSTEM_PROMPT));
+
+  const explainSearch = buildSystemPrompt({ profile: 'explain', searchActive: true });
+  check(
+    'explain+联网 同时含检索规范与回答规范',
+    explainSearch.includes(TOOL_USAGE_PROMPT) && explainSearch.includes(EXPLAIN_STYLE_PROMPT),
+  );
+  check('explain+联网 回答规范仍在最后', explainSearch.endsWith(EXPLAIN_STYLE_PROMPT));
+  check(
+    'explain+联网 顺序为 正文 → 检索规范 → 回答规范',
+    explainSearch.startsWith(EXPLAIN_SYSTEM_PROMPT) &&
+      explainSearch.indexOf(TOOL_USAGE_PROMPT) > EXPLAIN_SYSTEM_PROMPT.length &&
+      explainSearch.indexOf(EXPLAIN_STYLE_PROMPT) > explainSearch.indexOf(TOOL_USAGE_PROMPT),
+  );
+
+  const strictSearch = buildSystemPrompt({ profile: 'strict', searchActive: true });
+  check('strict+联网 仍不带检索规范（严格依据档绝不联网）', !strictSearch.includes(TOOL_USAGE_PROMPT));
+  check('strict+联网 仍逐字节等于 STRICT_SYSTEM_PROMPT', strictSearch === STRICT_SYSTEM_PROMPT);
+
+  const dflt = buildSystemPrompt();
+  check('不传参数按 explain 处理', dflt === explain && dflt.endsWith(EXPLAIN_STYLE_PROMPT));
 }
 
 console.log(`\n目标服务：${BASE}\n`);
