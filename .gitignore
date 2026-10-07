@@ -1,0 +1,19 @@
+# 依赖与密钥
+node_modules/
+dist/
+.env
+.env.local
+
+# 上传的文档库（含内部文件与批注，绝不入库）
+data/
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+tmp/
+tmp_*
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store

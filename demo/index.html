@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智能解读工作台 · 功能演示</title>
+<style>
+:root{
+  --ink:#1a1d21; --ink2:#4a5158; --ink3:#8b9299;
+  --line:#e4e7ec; --line2:#eef0f3;
+  --accent:#2f6fdb; --accent-soft:#e8f0fd;
+  --ai:#6b4fbb; --ai-soft:#f0ebfb;
+  --warn:#b4690e; --warn-soft:#fdf6ea;
+  --red:#b03a26; --red-soft:#fdf0ee;
+  --ok:#1f7a44; --ok-soft:#e8f5ec;
+  --panel:#fff; --bg:#f6f7f9;
+  --radius:12px;
+  --shadow:0 8px 30px rgba(20,30,45,.08);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.8 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent)}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px 80px}
+
+/* 顶栏 */
+.top{position:sticky;top:0;z-index:20;background:rgba(246,247,249,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top-inner{max-width:1080px;margin:0 auto;padding:11px 24px;display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600}
+.brand::before{content:'';flex:none;width:3px;height:17px;border-radius:2px;background:var(--accent)}
+.brand-sub{padding-left:10px;border-left:1px solid var(--line);font-size:12px;font-weight:400;color:var(--ink3)}
+.nav{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
+.nav a{padding:4px 10px;border-radius:999px;color:var(--ink2);text-decoration:none;font-size:13px}
+.nav a:hover{background:#fff;color:var(--accent)}
+
+/* 头部 */
+.hero{padding:52px 0 34px}
+.hero h1{margin:0 0 12px;font-size:32px;line-height:1.35;letter-spacing:-.5px}
+.hero .lead{margin:0 0 20px;max-width:760px;color:var(--ink2);font-size:16px}
+.hero .meta{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:4px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:12.5px;color:var(--ink2)}
+.chip.accent{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+
+/* 卡片 */
+section{margin:38px 0}
+h2.sec{margin:0 0 6px;font-size:21px;letter-spacing:-.3px}
+h2.sec .num{color:var(--ink3);font-weight:400;margin-right:8px;font-variant-numeric:tabular-nums}
+p.sub{margin:0 0 18px;color:var(--ink3);font-size:13.5px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px}
+.grid{display:grid;gap:14px}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:860px){.g3,.g2{grid-template-columns:1fr}}
+
+.feat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.feat h3{margin:0 0 6px;font-size:15px}
+.feat p{margin:0;color:var(--ink2);font-size:13px;line-height:1.75}
+.feat .ico{font-size:18px;margin-bottom:8px;display:block}
+
+/* 表格 */
+table{width:100%;border-collapse:collapse;font-size:14px;background:#fff}
+th,td{padding:10px 12px;border:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:#fafbfc;font-weight:600;font-size:13px}
+td code{background:var(--line2);padding:1px 6px;border-radius:4px;font-size:12.5px;font-family:ui-monospace,Consolas,monospace}
+.note{margin-top:10px;font-size:12.5px;color:var(--ink3)}
+
+/* 结构树 */
+.tree{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 22px}
+@media(max-width:760px){.tree{grid-template-columns:1fr}}
+.tree-row{display:flex;align-items:baseline;gap:10px;padding:6px 10px;border-radius:7px;font-size:13.5px}
+.tree-row:hover{background:#fafbfc}
+.tree-row .name{flex:1;color:var(--ink)}
+.tree-row .cnt{color:var(--ink3);font-size:12px;font-variant-numeric:tabular-nums}
+.tree-row .range{color:var(--ink3);font-size:11.5px;font-family:ui-monospace,Consolas,monospace}
+
+/* 统计条 */
+.stats{display:flex;gap:26px;flex-wrap:wrap;margin-bottom:16px}
+.stat{display:flex;flex-direction:column}
+.stat b{font-size:26px;line-height:1.2;font-variant-numeric:tabular-nums}
+.stat span{font-size:12.5px;color:var(--ink3)}
+
+/* 演示区 */
+.demo{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.demo{grid-template-columns:1fr}}
+.pane{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+.pane-head{padding:10px 14px;border-bottom:1px solid var(--line2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.pane-head .tag{font-weight:400;font-size:11.5px;padding:1px 7px;border-radius:999px;background:var(--line2);color:var(--ink3)}
+.pane-body{padding:14px 16px;font-size:14px;overflow:auto;max-height:560px}
+.doc-text{line-height:2.1}
+.doc-text .pid{display:inline-block;margin-right:8px;padding:0 6px;border-radius:4px;background:var(--line2);color:var(--ink3);font-size:11px;vertical-align:2px}
+.doc-text p{margin:0 0 10px;text-indent:2em}
+.doc-text p.sel{background:#fdf1cf;border-radius:3px;text-indent:2em}
+
+/* AI 回答里的 markdown */
+.answer{line-height:1.9;font-size:13.5px}
+.answer h3,.answer h4,.answer h5{margin:14px 0 6px;font-size:14px}
+.answer h3:first-child,.answer h4:first-child{margin-top:0}
+.answer p{margin:0 0 8px}
+.answer ul,.answer ol{margin:6px 0 10px;padding-left:20px}
+.answer li{margin:3px 0}
+.answer blockquote{margin:10px 0 0;padding:7px 12px;border-left:3px solid var(--line);background:#fafbfc;border-radius:0 6px 6px 0;color:var(--ink2);font-size:13px}
+.answer strong{font-weight:600}
+.answer code{background:var(--line2);padding:1px 5px;border-radius:4px;font-size:12.5px}
+
+/* 可点击引用 */
+.cite{display:inline-block;padding:0 5px;margin:0 1px;border:1px solid #cdd8ea;border-radius:4px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;cursor:pointer;font-family:ui-monospace,Consolas,monospace}
+.cite:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.cite.flash{animation:flash 1.2s ease}
+@keyframes flash{0%,100%{background:var(--accent-soft)}30%{background:#f7df9a;border-color:#d99b1c;color:#7a5312}}
+
+/* 对比 */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.compare{grid-template-columns:1fr}}
+.vs-head{padding:11px 14px;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line2)}
+.vs-on{background:var(--ok-soft);color:var(--ok)}
+.vs-off{background:var(--warn-soft);color:var(--warn)}
+.diff{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;padding:14px 16px;background:#fafbfc;border:1px solid var(--line);border-radius:10px;font-size:13.5px}
+.diff b{font-variant-numeric:tabular-nums}
+
+/* 测试 */
+.test-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line2);font-size:13.5px}
+.test-row:last-child{border-bottom:none}
+.test-row .nm{flex:1}
+.test-row .path{color:var(--ink3);font-size:11.5px;font-family:ui-monospace,Consolas,monospace}
+.test-row .n{color:var(--ok);font-weight:600;font-variant-numeric:tabular-nums}
+.badge-ok{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-size:12px}
+
+/* 代码 */
+pre{background:#1e2430;color:#dfe6f0;padding:14px 16px;border-radius:10px;overflow:auto;font-size:13px;line-height:1.75;font-family:ui-monospace,Consolas,monospace}
+pre .c{color:#7d8899}
+.kbd{display:inline-block;padding:1px 7px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:#fff;font-size:12.5px;font-family:ui-monospace,Consolas,monospace}
+footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--line);color:var(--ink3);font-size:12.5px}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-inner">
+    <div class="brand">智能解读工作台<span class="brand-sub">AI 智能体 · 划词批注 · 溯源解读</span></div>
+    <nav class="nav">
+      <a href="#cap">能力</a>
+      <a href="#format">格式</a>
+      <a href="#sample">真实样例</a>
+      <a href="#work">划词批注</a>
+      <a href="#mode">两档解释</a>
+      <a href="#search">联网检索</a>
+      <a href="#lib">文档库</a>
+      <a href="#test">测试</a>
+      <a href="#run">运行</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="hero">
+    <h1>智能解读工作台<br>功能演示</h1>
+    <p class="lead">
+      把文件上传进来，自动解析成可溯源的段落；读的时候选中任意文字，就能加批注或让 AI 把它讲明白。
+      默认「讲透」档会把术语和背景讲清楚、补充内容明确标注；切到「严格依据」档则只用原文作答、逐条标出依据段落，可一键回查。
+      AI 判断这一问需要外部信息时，还能联网检索权威来源并把出处列出来。
+    </p>
+    <div class="meta">
+      <span class="chip accent">真实运行数据</span>
+      <span class="chip">本页所有解释文本均为实际模型输出，未做修饰</span>
+      <span class="chip">604 项自动化测试通过</span>
+    </div>
+  </div>
+
+  <section id="cap">
+    <h2 class="sec"><span class="num">01</span>能做什么</h2>
+    <p class="sub">围绕「读懂一份文件」这件事，各个环节都做实了。</p>
+    <div class="grid g2">
+      <div class="feat">
+        <span class="ico">📥</span>
+        <h3>多格式上传，自动解析</h3>
+        <p>Office 与 WPS 格式都支持，<strong>按文件内容识别格式而非扩展名</strong>。同一批上传里某个文件坏掉，不影响其余文件。</p>
+      </div>
+      <div class="feat">
+        <span class="ico">🗂</span>
+        <h3>文件夹归档，批注随文档保存</h3>
+        <p>可建文件夹分类；批注与 AI 解释按文档独立持久化在服务端，换浏览器、换电脑都还在。</p>
+      </div>
+      <div class="feat">
+        <span class="ico">🖍</span>
+        <h3>划词批注 + 溯源解释</h3>
+        <p>选中原文即可添加人工批注或向 AI 提问；解释标注依据段落，点编号即回跳原文对应条款。<strong>卡片里直接显示被解释的那段原文</strong>，解答可一键折叠——条目再多也能一眼扫过。</p>
+      </div>
+      <div class="feat">
+        <span class="ico">🔁</span>
+        <h3>递归追问，逐层深入</h3>
+        <p>可对任一解释继续追问，最多 6 层，每层都带着上文继续讲。</p>
+      </div>
+      <div class="feat">
+        <span class="ico">🎚</span>
+        <h3>两档解释：讲透 / 严格依据</h3>
+        <p>默认「讲透」——术语当场讲清、可补背景，补充内容标注为补充；「严格依据」只用原文作答、逐条标依据。一键切换，即时生效。</p>
+      </div>
+      <div class="feat">
+        <span class="ico">🧭</span>
+        <h3>过程可见 + 来源可点</h3>
+        <p>思考 / 检索 / 作答逐步展示，生成中自动展开、结束后折叠；联网取回的来源单独列一份，点开就是原始出处。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="format">
+    <h2 class="sec"><span class="num">02</span>支持的格式</h2>
+    <p class="sub">WPS 是日常工作主力，因此 WPS 系格式与 Office 系同等对待。</p>
+    <table>
+      <thead><tr><th style="width:120px">类别</th><th style="width:280px">扩展名</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>Word</td><td><code>.docx / .doc / .wps / .wpt</code></td><td>OOXML 与 Word97 二进制两种容器都支持</td></tr>
+        <tr><td>Excel</td><td><code>.xlsx / .xls* / .et</code></td><td>共享字符串与内联字符串均可解析</td></tr>
+        <tr><td>PowerPoint</td><td><code>.pptx / .ppt* / .dps</code></td><td>按页提取文本</td></tr>
+        <tr><td>PDF</td><td><code>.pdf</code></td><td>按行聚合，避免逐片段断句</td></tr>
+        <tr><td>RTF</td><td><code>.rtf</code></td><td>含 GBK 代码页与 UTF-8 直出两种写法</td></tr>
+        <tr><td>文本</td><td><code>.txt / .md</code></td><td>UTF-8 / UTF-16 LE / BE 自动识别编码</td></tr>
+      </tbody>
+    </table>
+    <p class="note">带 * 的老式二进制表格与演示（.xls / .ppt）暂不支持，上传时会给出明确提示</p>
+  </section>
+
+  <section id="sample">
+    <h2 class="sec"><span class="num">03</span>真实样例</h2>
+    <p class="sub">下面用的是《中国共产党统一战线工作条例》原文件，文件名是 <code>.wps</code>。</p>
+
+    <div class="card" style="margin-bottom:16px">
+      <div class="stats">
+        <div class="stat"><b>14</b><span>识别出的章</span></div>
+        <div class="stat"><b>61</b><span>识别出的条</span></div>
+        <div class="stat"><b>10147</b><span>正文字数</span></div>
+        <div class="stat"><b>172</b><span>原始段落</span></div>
+      </div>
+      <p style="margin:0;font-size:13.5px;color:var(--ink2)">
+        ⚠️ 一个真实教训：这份文件扩展名是 <code>.wps</code>，<strong>内容其实是 Word 97 二进制格式</strong>
+        （OLE2 容器 + WordDocument 流，还带 WPS 自己写的 WpsCustomData 流）。
+        如果按扩展名判断格式，就会解析失败——所以这里一律<strong>读文件头判断真实格式</strong>。
+      </p>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:10px">解析出的章节结构（前 6 章示例）</div>
+      <div class="tree">
+        <div class="tree-row"><span class="name">第一章　总则</span><span class="cnt">5 条</span><span class="range">P-1-1 ~ P-1-5</span></div>
+        <div class="tree-row"><span class="name">第二章　组织领导和职责</span><span class="cnt">6 条</span><span class="range">P-2-1 ~ P-2-6</span></div>
+        <div class="tree-row"><span class="name">第三章　民主党派和无党派人士工作</span><span class="cnt">5 条</span><span class="range">P-3-1 ~ P-3-5</span></div>
+        <div class="tree-row"><span class="name">第四章　党外知识分子工作</span><span class="cnt">3 条</span><span class="range">P-4-1 ~ P-4-3</span></div>
+        <div class="tree-row"><span class="name">第五章　民族工作</span><span class="cnt">3 条</span><span class="range">P-5-1 ~ P-5-3</span></div>
+        <div class="tree-row"><span class="name">第六章　宗教工作</span><span class="cnt">4 条</span><span class="range">P-6-1 ~ P-6-4</span></div>
+        <div class="tree-row"><span class="name">第七章　非公有制经济领域统一战线工作</span><span class="cnt">4 条</span><span class="range">P-7-1 ~ P-7-4</span></div>
+        <div class="tree-row"><span class="name">第八章　新的社会阶层人士统一战线工作</span><span class="cnt">3 条</span><span class="range">P-8-1 ~ P-8-3</span></div>
+        <div class="tree-row"><span class="name">第九章　港澳台统一战线工作</span><span class="cnt">3 条</span><span class="range">P-9-1 ~ P-9-3</span></div>
+        <div class="tree-row"><span class="name">第十章　海外统一战线工作和侨务工作</span><span class="cnt">2 条</span><span class="range">P-10-1 ~ P-10-2</span></div>
+        <div class="tree-row"><span class="name">第十一章　党外代表人士队伍建设</span><span class="cnt">12 条</span><span class="range">P-11-1 ~ P-11-12</span></div>
+        <div class="tree-row"><span class="name">第十二章　统战部门自身建设</span><span class="cnt">5 条</span><span class="range">P-12-1 ~ P-12-5</span></div>
+      </div>
+      <p class="note">……共 14 章</p>
+    </div>
+  </section>
+
+  <section id="work">
+    <h2 class="sec"><span class="num">04</span>划词批注与溯源解读</h2>
+    <p class="sub">左边是原文，右边是 AI 解释（默认「讲透」档的实际输出）。解释里的编号可以直接点，回跳原文。</p>
+    <div class="demo">
+      <div class="pane">
+        <div class="pane-head">原文 <span class="tag">只读 · 标注不改动原文</span></div>
+        <div class="pane-body doc-text">
+          <p><span class="pid">P-1-1</span>第一条　为了加强党对统一战线工作的集中统一领导，提高统一战线工作的科学化规范化制度化水平，巩固和发展爱国统一战线，根据《中国共产党章程》，制定本条例。</p>
+          <p class="sel"><span class="pid">P-1-2</span>第二条　本条例所称统一战线，是指中国共产党领导的、以工农联盟为基础的，包括全体社会主义劳动者、社会主义事业的建设者、拥护社会主义的爱国者、拥护祖国统一和致力于中华民族伟大复兴的爱国者的广泛的爱国统一战线。</p>
+          <p><span class="pid">P-1-3</span>统一战线是中国共产党凝聚人心、汇聚力量的政治优势和战略方针，是夺取革命、建设、改革事业胜利的重要法宝……</p>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="pane-head">AI 解释 <span class="tag">DeepSeek-V4.1-Flash · 流式</span></div>
+        <div class="pane-body answer"><h4>核心解释</h4>
+<p>这一条干了两件事：前半句是<strong>定义条款</strong>——用&quot;本条例所称……是指……&quot;给&quot;统一战线&quot;下一个在本条例范围内使用的定义；后半段是<strong>定位条款</strong>——说明统一战线在党的事业中属于什么性质、什么地位（政治优势、战略方针、重要法宝）。所以它界定的不是某项具体工作怎么做，而是&quot;谁算统一战线、它有多重要&quot;。</p>
+<p>---</p>
+<h4>一、这一条的结构：定义 + 定位</h4>
+<p>原文可以切成两块（同属 <span class="cite" data-ref="第二条">第二条</span>）：</p>
+<p>| 部分 | 原文标志 | 作用 |</p>
+<p>|---|---|---|</p>
+<p>| 定义 | &quot;本条例所称统一战线，是指……的联盟&quot; | 划定概念边界，供本条例全篇使用 |</p>
+<p>| 定位 | &quot;统一战线是……政治优势和战略方针，是……重要法宝&quot;（三个&quot;重要法宝&quot;） | 价值判断与地位宣示 |</p>
+<p><strong>关键点：</strong>&quot;本条例所称&quot;这五个字很重要。它意味着这个定义是<strong>效力范围有限的定义</strong>——是给本条例这部党内法规自己用的，不等于给全社会、给学术研究下一个唯一权威定义。<span class="cite" data-ref="第二条">第二条</span></p>
+<p>---</p>
+<h4>二、定义部分拆开看：三层结构</h4>
+<p>原文的定义其实由三个要素叠加而成（<span class="cite" data-ref="第二条">第二条</span>）：</p>
+<ol>
+<li><strong>领导力量</strong>：&quot;中国共产党领导的&quot; —— 这是定性前提，排在最前面。</li>
+<li><strong>基础</strong>：&quot;以工农联盟为基础的&quot; —— &quot;工农联盟&quot;指工人阶级同农民阶级的联盟，在党的理论中被视为统一战线的根本基础。</li>
+<li><strong>构成范围</strong>：&quot;包括全体社会主义劳动者、社会主义事业的建设者、拥护社会主义的爱国者、拥护祖国统一和致力于中华民族伟大复兴的爱国者的联盟&quot; —— 这是四种（实际读作四类，后一类内含两种修饰）成员的并列。</li>
+</ol>
+<p><strong>用得上什么场景：</strong>判断&quot;某个群体、某个人群是否属于统战工作对象&quot;时，靠的就是第 3 层的这份名单。名单是&quot;包括&quot;，不是&quot;仅限于&quot;，这一点原文没有进一步说明，见下文第四部分。</p>
+<p>---</p>
+<h4>三、定位部分：为什么连说三个&quot;重要法宝&quot;</h4>
+<p>后半段是一组排比，三个&quot;重要法宝&quot;各挂一个维度（<span class="cite" data-ref="第二条">第二条</span>）：</p>
+<ul>
+<li>&quot;夺取革命、建设、改革事业胜利的重要法宝&quot; —— 指向<strong>历史经验</strong>（革命、建设、改革三个历史时期）。</li>
+<li>&quot;增强党的阶级基础、扩大党的群众基础、巩固党的执政地位的重要法宝&quot; —— 指向<strong>党的建设与执政</strong>。</li>
+<li>&quot;全面建设社会主义现代化国家、实现中华民族伟大复兴的重要法宝&quot; —— 指向<strong>当前与今后的目标</strong>。</li>
+</ul>
+<p>前面还并列了一句&quot;是中国共产党凝聚人心、汇聚力量的政治优势和战略方针&quot;。</p>
+<p><strong>为什么这么写：</strong> 定义条款解决&quot;是什么&quot;，但一部工作条例还需要说明&quot;为什么重要&quot;，否则后面的机构设置、职责分工、工作保障就缺少依据支撑。这类表述在党内法规中通常放在总则靠前位置，起统领全篇的作用。</p>
+<p><strong>※ 补充，非原文：</strong>&quot;法宝&quot;是党的文献中的固定说法，源自毛泽东 1939 年《〈共产党人〉发刊词》把&quot;统一战线、武装斗争、党的建设&quot;称为战胜敌人的三个法宝。这条背景原文没有写，仅供帮助理解&quot;法宝&quot;一词的分量，不构成对本条的解读依据。</p>
+<p>---</p>
+<h4>四、需要留意的地方（原文模糊之处）</h4>
+<ul>
+<li><strong>&quot;本条例所称&quot;的射程</strong>：这个定义只在本条例内部有效。若在其他文件、其他场合看到&quot;统一战线&quot;的不同表述，不必然冲突，因为各自的定义条款可能不同。依据 <span class="cite" data-ref="第二条">第二条</span> 中&quot;本条例所称&quot;这一限定语。</li>
+<li><strong>&quot;包括&quot;是穷尽还是列举</strong>：原文用&quot;包括……的联盟&quot;，没有写&quot;仅包括&quot;或&quot;等&quot;。&quot;包括&quot;在通常用法中既可理解为穷尽列举，也可理解为举例。原文没有给出判断依据，两种理解都无法从本段单独排除。依据 <span class="cite" data-ref="第二条">第二条</span>。</li>
+<li><strong>定位段算不算定义的组成部分</strong>：一种读法认为第二段只是宣示性表述，不参与界定概念；另一种读法认为&quot;政治优势和战略方针&quot;也是对这个概念性质的界定。原文没有明示分界，需结合本条例其他条款（如总则中的指导思想、工作范围条款，本次未提供）才能确定。依据 <span class="cite" data-ref="第二条">第二条</span>。</li>
+</ul>
+<p>---</p>
+<h4>五、术语速查</h4>
+<ul>
+<li><strong>统一战线</strong>：不同政治力量为实现共同目标结成的联盟。原文给出的具体内涵即上述三层结构。<span class="cite" data-ref="第二条">第二条</span></li>
+<li><strong>工农联盟</strong>：工人阶级与农民阶级的联盟，原文称其为统一战线的&quot;基础&quot;。<span class="cite" data-ref="第二条">第二条</span></li>
+<li><strong>社会主义事业的建设者</strong>：与&quot;社会主义劳动者&quot;并列的另一类成员表述，原文未作解释。<span class="cite" data-ref="第二条">第二条</span></li>
+<li><strong>重要法宝</strong>：党的文献用语，指具有关键作用的手段或依靠。原文未作解释。<span class="cite" data-ref="第二条">第二条</span></li>
+<li><strong>本条例</strong>：原文未标明法规名称。<strong>※ 补充，非原文：</strong>从&quot;统一战线&quot;及本条体例看，应指《中国共产党统一战线工作条例》。该条例的印发、修订时间等属于时效性信息，我无法联网核实，可能已过时或与现行版本不一致，请以正式文本为准。</li>
+</ul>
+<p>---</p>
+<blockquote>依据：<span class="cite" data-ref="第二条">第二条</span></blockquote></div>
+      </div>
+    </div>
+    <div class="diff">
+      <span>提出提问：<b>这一条到底在界定什么？</b></span>
+      <span>本次回答引用 <b>12</b> 处依据</span>
+      <span>落款：<b>供理解参考，不作办事依据</b></span>
+    </div>
+  </section>
+
+  <section id="mode">
+    <h2 class="sec"><span class="num">05</span>两档解释：讲透 / 严格依据</h2>
+    <p class="sub">同一段原文、同一个问题，两档的实际输出对比。档位在顶栏「⚙ 设置 → 解读口径」里并排点选。</p>
+    <div class="compare">
+      <div class="pane">
+        <div class="vs-head vs-off">✓ 讲透（默认）</div>
+        <div class="pane-body answer"><h4>核心解释</h4>
+<p>这一条干了两件事：前半句是<strong>定义条款</strong>——用&quot;本条例所称……是指……&quot;给&quot;统一战线&quot;下一个在本条例范围内使用的定义；后半段是<strong>定位条款</strong>——说明统一战线在党的事业中属于什么性质、什么地位（政治优势、战略方针、重要法宝）。所以它界定的不是某项具体工作怎么做，而是&quot;谁算统一战线、它有多重要&quot;。</p>
+<p>---</p>
+<h4>一、这一条的结构：定义 + 定位</h4>
+<p>原文可以切成两块（同属 <span class="cite" data-ref="第二条">第二条</span>）：</p>
+<p>| 部分 | 原文标志 | 作用 |</p>
+<p>|---|---|---|</p>
+<p>| 定义 | &quot;本条例所称统一战线，是指……的联盟&quot; | 划定概念边界，供本条例全篇使用 |</p>
+<p>| 定位 | &quot;统一战线是……政治优势和战略方针，是……重要法宝&quot;（三个&quot;重要法宝&quot;） | 价值判断与地位宣示 |</p>
+<p><strong>关键点：</strong>&quot;本条例所称&quot;这五个字很重要。它意味着这个定义是<strong>效力范围有限的定义</strong>——是给本条例这部党内法规自己用的，不等于给全社会、给学术研究下一个唯一权威定义。<span class="cite" data-ref="第二条">第二条</span></p>
+<p>---</p>
+<h4>二、定义部分拆开看：三层结构</h4>
+<p>原文的定义其实由三个要素叠加而成（<span class="cite" data-ref="第二条">第二条</span>）：</p>
+<ol>
+<li><strong>领导力量</strong>：&quot;中国共产党领导的&quot; —— 这是定性前提，排在最前面。</li>
+<li><strong>基础</strong>：&quot;以工农联盟为基础的&quot; —— &quot;工农联盟&quot;指工人阶级同农民阶级的联盟，在党的理论中被视为统一战线的根本基础。</li>
+<li><strong>构成范围</strong>：&quot;包括全体社会主义劳动者、社会主义事业的建设者、拥护社会主义的爱国者、拥护祖国统一和致力于中华民族伟大复兴的爱国者的联盟&quot; —— 这是四种（实际读作四类，后一类内含两种修饰）成员的并列。</li>
+</ol>
+<p><strong>用得上什么场景：</strong>判断&quot;某个群体、某个人群是否属于统战工作对象&quot;时，靠的就是第 3 层的这份名单。名单是&quot;包括&quot;，不是&quot;仅限于&quot;，这一点原文没有进一步说明，见下文第四部分。</p>
+<p>---</p>
+<h4>三、定位部分：为什么连说三个&quot;重要法宝&quot;</h4>
+<p>后半段是一组排比，三个&quot;重要法宝&quot;各挂一个维度（<span class="cite" data-ref="第二条">第二条</span>）：</p>
+<ul>
+<li>&quot;夺取革命、建设、改革事业胜利的重要法宝&quot; —— 指向<strong>历史经验</strong>（革命、建设、改革三个历史时期）。</li>
+<li>&quot;增强党的阶级基础、扩大党的群众基础、巩固党的执政地位的重要法宝&quot; —— 指向<strong>党的建设与执政</strong>。</li>
+<li>&quot;全面建设社会主义现代化国家、实现中华民族伟大复兴的重要法宝&quot; —— 指向<strong>当前与今后的目标</strong>。</li>
+</ul>
+<p>前面还并列了一句&quot;是中国共产党凝聚人心、汇聚力量的政治优势和战略方针&quot;。</p>
+<p><strong>为什么这么写：</strong> 定义条款解决&quot;是什么&quot;，但一部工作条例还需要说明&quot;为什么重要&quot;，否则后面的机构设置、职责分工、工作保障就缺少依据支撑。这类表述在党内法规中通常放在总则靠前位置，起统领全篇的作用。</p>
+<p><strong>※ 补充，非原文：</strong>&quot;法宝&quot;是党的文献中的固定说法，源自毛泽东 1939 年《〈共产党人〉发刊词》把&quot;统一战线、武装斗争、党的建设&quot;称为战胜敌人的三个法宝。这条背景原文没有写，仅供帮助理解&quot;法宝&quot;一词的分量，不构成对本条的解读依据。</p>
+<p>---</p>
+<h4>四、需要留意的地方（原文模糊之处）</h4>
+<ul>
+<li><strong>&quot;本条例所称&quot;的射程</strong>：这个定义只在本条例内部有效。若在其他文件、其他场合看到&quot;统一战线&quot;的不同表述，不必然冲突，因为各自的定义条款可能不同。依据 <span class="cite" data-ref="第二条">第二条</span> 中&quot;本条例所称&quot;这一限定语。</li>
+<li><strong>&quot;包括&quot;是穷尽还是列举</strong>：原文用&quot;包括……的联盟&quot;，没有写&quot;仅包括&quot;或&quot;等&quot;。&quot;包括&quot;在通常用法中既可理解为穷尽列举，也可理解为举例。原文没有给出判断依据，两种理解都无法从本段单独排除。依据 <span class="cite" data-ref="第二条">第二条</span>。</li>
+<li><strong>定位段算不算定义的组成部分</strong>：一种读法认为第二段只是宣示性表述，不参与界定概念；另一种读法认为&quot;政治优势和战略方针&quot;也是对这个概念性质的界定。原文没有明示分界，需结合本条例其他条款（如总则中的指导思想、工作范围条款，本次未提供）才能确定。依据 <span class="cite" data-ref="第二条">第二条</span>。</li>
+</ul>
+<p>---</p>
+<h4>五、术语速查</h4>
+<ul>
+<li><strong>统一战线</strong>：不同政治力量为实现共同目标结成的联盟。原文给出的具体内涵即上述三层结构。<span class="cite" data-ref="第二条">第二条</span></li>
+<li><strong>工农联盟</strong>：工人阶级与农民阶级的联盟，原文称其为统一战线的&quot;基础&quot;。<span class="cite" data-ref="第二条">第二条</span></li>
+<li><strong>社会主义事业的建设者</strong>：与&quot;社会主义劳动者&quot;并列的另一类成员表</li>
+</ul></div>
+      </div>
+      <div class="pane">
+        <div class="vs-head vs-on">○ 严格依据</div>
+        <div class="pane-body answer"><p>核心解释：</p>
+<p>这一条主要是在本条例语境下界定“统一战线”是什么：由中国共产党领导、以工农联盟为基础，并包括特定爱国者群体的联盟。<span class="cite" data-ref="第二条">第二条</span></p>
+<p>它同时说明统一战线的政治定位、战略方针和“重要法宝”作用，而不是规定具体成员资格、申请条件或操作程序。<span class="cite" data-ref="第二条">第二条</span></p>
+<p>要点：</p>
+<ul>
+<li>界定概念：明确“本条例所称统一战线”的内涵，即中国共产党领导的、以工农联盟为基础的联盟。<span class="cite" data-ref="第二条">第二条</span></li>
+<li>列举构成范围：包括全体社会主义劳动者、社会主义事业的建设者、拥护社会主义的爱国者、拥护祖国统一和致力于中华民族伟大复兴的爱国者。<span class="cite" data-ref="第二条">第二条</span></li>
+<li>明确领导与基础：统一战线由中国共产党领导，以工农联盟为基础。<span class="cite" data-ref="第二条">第二条</span></li>
+<li>明确政治定位：统一战线是中国共产党凝聚人心、汇聚力量的政治优势和战略方针。<span class="cite" data-ref="第二条">第二条</span></li>
+<li>说明功能作用：它是夺取革命、建设、改革事业胜利的重要法宝，是增强党的阶级基础、扩大党的群众基础、巩固党的执政地位的重要法宝，是全面建设社会主义现代化国家、实现中华民族伟大复兴的重要法宝。<span class="cite" data-ref="第二条">第二条</span></li>
+<li>本条边界：本条未展开具体人员范围、资格条件、权利义务和工作机制；如涉及具体成员资格认定等问题，该问题需要参考其他条款，请选中相关段落进一步提问。根据当前段落的理解是，本条只作概念和定位界定，但最终资格认定和金额以主管部门审核为准。<span class="cite" data-ref="第二条">第二条</span></li>
+</ul>
+<blockquote>依据：<span class="cite" data-ref="第二条">第二条</span></blockquote></div>
+      </div>
+    </div>
+    <div class="diff" style="background:var(--ok-soft);border-color:#cfe8d8">
+      <span>讲透档：引用标注 <b>12</b> 处 · 补充内容需标注为补充 · 落款「供理解参考，不作办事依据」</span>
+    </div>
+    <div class="diff">
+      <span>严格依据档：引用标注 <b>9</b> 处 · 只用原文、不联网 · 落款「最终认定与金额以主管部门审核为准」</span>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div style="font-size:13.5px;color:var(--ink2)">
+        档位不只是换一句开场白——它同时影响三处：<strong>系统提示词</strong>（讲解者 ↔ 五条约束）、
+        <strong>用户提示词里的任务措辞</strong>（「讲清楚，讲透」 ↔ 「仅依据原文，不得引入原文之外的信息」）、
+        <strong>末尾落款</strong>。只改提示词会导致自相矛盾：一边说按原文作答，一边又让 AI 自由补充。
+        两档共用同一条内核：<strong>不编造原文里没有的数字/日期/条件/期限，模糊表述列出多种理解，每处解释标依据段落</strong>。
+      </div>
+    </div>
+  </section>
+
+  <section id="search">
+    <h2 class="sec"><span class="num">06</span>联网检索与过程展示</h2>
+    <p class="sub">
+      可选开启。AI 判断这一问需要原文之外的信息时才去检索——不是每段都搜。默认关闭；「严格依据」档强制不联网。
+    </p>
+    <div class="card" style="margin-bottom:14px">
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:2px">实际运行的过程（真实步骤事件）</div>
+      <ol style="margin:8px 0 0;padding-left:22px"><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">思</b>
+          正在思考如何作答 <span style="color:#8b9299;font-size:12px">2.5s</span></li><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">检</b>
+          检索到 5 条权威来源 <span style="color:#8b9299">「中国共产党章程 党的性质 最高理想 最终目标 官方」</span> <span style="color:#8b9299;font-size:12px">3.3s</span></li><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">检</b>
+          检索到 5 条权威来源 <span style="color:#8b9299">「中央统一战线工作部 职责 官方 全称」</span> <span style="color:#8b9299;font-size:12px">4.6s</span></li><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">检</b>
+          检索到 5 条权威来源 <span style="color:#8b9299">「中国共产党统一战线工作条例 施行日期 发布」</span> <span style="color:#8b9299;font-size:12px">5.0s</span></li><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">思</b>
+          正在梳理检索到的资料 <span style="color:#8b9299;font-size:12px">1.7s</span></li><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">检</b>
+          检索到 5 条权威来源 <span style="color:#8b9299">「中国共产党是中国工人阶级的先锋队 同时是中国人民和中华民族的先锋队」</span> <span style="color:#8b9299;font-size:12px">4.8s</span></li><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">检</b>
+          检索到 5 条权威来源 <span style="color:#8b9299">「中央统战部 党中央主管统一战线工作 职能部门 主要职责」</span> <span style="color:#8b9299;font-size:12px">4.0s</span></li><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">检</b>
+          检索到 5 条权威来源 <span style="color:#8b9299">「统一战线工作条例 2020年12月21日 中共中央印发 第一条」</span> <span style="color:#8b9299;font-size:12px">3.8s</span></li><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">思</b>
+          正在梳理检索到的资料 <span style="color:#8b9299;font-size:12px">8.4s</span></li><li style="margin:3px 0">
+          <b style="display:inline-block;min-width:18px;text-align:center">答</b>
+          已生成答案 <span style="color:#8b9299;font-size:12px">5.6s</span></li></ol>
+      <div style="margin-top:10px;font-size:13px;color:var(--ink3)">去重后的来源清单（界面里可点击）</div>
+      <ol style="margin:6px 0 0;padding-left:22px"><li style="margin:3px 0"><a href="https://www.xzdw.gov.cn/fbt/dwwj/201605/t20160503_64754.html#1" target="_blank" rel="noreferrer noopener">中国共产党章程（２０１２年修改）_中国共产党西藏自治区委员会</a> <span style="color:#8b9299;font-size:12px">xzdw.gov.cn</span></li><li style="margin:3px 0"><a href="https://il.china-embassy.gov.cn/chn/xzt/xiyingshijiuda19/201711/t20171120_2368089.htm#3" target="_blank" rel="noreferrer noopener">中国共产党章程（中国共产党第十九次全国代表大会部分修改，2017年10月24日通过）</a> <span style="color:#8b9299;font-size:12px">il.china-embassy.gov.cn</span></li><li style="margin:3px 0"><a href="https://www.zj.gov.cn/art/2022/10/27/art_1229396854_59900005.html#1" target="_blank" rel="noreferrer noopener">中国共产党章程 - 中国共产党章程</a> <span style="color:#8b9299;font-size:12px">zj.gov.cn</span></li><li style="margin:3px 0"><a href="http://politics.people.com.cn/n1/2017/1028/c1001-29614278.html#1#2" target="_blank" rel="noreferrer noopener">受权发布：中国共产党章程</a> <span style="color:#8b9299;font-size:12px">politics.people.com.cn</span></li><li style="margin:3px 0"><a href="https://www.tjszx.gov.cn/19d/system/2017/11/17/010004711.shtml#1" target="_blank" rel="noreferrer noopener">中国共产党章程-十九大专题-首页</a> <span style="color:#8b9299;font-size:12px">tjszx.gov.cn</span></li><li style="margin:3px 0"><a href="https://www.zytzb.gov.cn/zytzb/2022-10/21/article_2022102109582212404.shtml" target="_blank" rel="noreferrer noopener">本部介绍</a> <span style="color:#8b9299;font-size:12px">zytzb.gov.cn</span></li><li style="margin:3px 0"><a href="http://cpc.people.com.cn/BIG5/n/2013/1210/c372195-23802211.html" target="_blank" rel="noreferrer noopener">中央統戰部主要職責</a> <span style="color:#8b9299;font-size:12px">cpc.people.com.cn</span></li><li style="margin:3px 0"><a href="http://big5.china.com.cn/gate/big5/finance.china.com.cn/roll/20150717/3236674.shtml" target="_blank" rel="noreferrer noopener">統戰部的權有多大 究竟是幹什麼的？_財經_中國網</a> <span style="color:#8b9299;font-size:12px">big5.china.com.cn</span></li><li style="margin:3px 0"><a href="http://cpc.people.com.cn/n/2013/1210/c372195-23802211.html" target="_blank" rel="noreferrer noopener">中央统战部主要职责</a> <span style="color:#8b9299;font-size:12px">cpc.people.com.cn</span></li><li style="margin:3px 0"><a href="http://cpc.people.com.cn/n/2013/1210/c372195-23802380.html" target="_blank" rel="noreferrer noopener">中央统战部机构设置</a> <span style="color:#8b9299;font-size:12px">cpc.people.com.cn</span></li><li style="margin:3px 0"><a href="http://www.hljtyzx.gov.cn/web/article/3abc84c8990d11ecae560242ac110006%3bJSESSIONID%3d175a7c5d-ea2f-4684-8262-ae7d139b441c#1" target="_blank" rel="noreferrer noopener">【重磅发布】定！中共中央印发《中国共产党统一战线工作条例》 - 当前位置：网站首页&gt;统战要闻</a> <span style="color:#8b9299;font-size:12px">hljtyzx.gov.cn</span></li><li style="margin:3px 0"><a href="https://www.spp.gov.cn/dj/c100027/202101/t20210105_505639.shtml#1" target="_blank" rel="noreferrer noopener">中共中央印发《中国共产党统一战线工作条例》_机关党建 - 中共中央印发《中国共产党统一战线工作条例》</a> <span style="color:#8b9299;font-size:12px">spp.gov.cn</span></li><li style="margin:3px 0"><a href="https://cms.dtdjzx.gov.cn/staticPage/djhzzgzxcw/high/20210105/2791387.html#1" target="_blank" rel="noreferrer noopener">中共中央印发《中国共产党统一战线工作条例》</a> <span style="color:#8b9299;font-size:12px">cms.dtdjzx.gov.cn</span></li><li style="margin:3px 0"><a href="https://mzzj.sh.gov.cn/zcfg1/20210517/727e29b266cf4dfb8b7025764bebcc2a.html#1" target="_blank" rel="noreferrer noopener">中国共产党统一战线工作条例 - 本区域包含无障碍工具条打开按钮、关怀版打开按钮、繁简体切换按钮、站点地图、联系我们等信息</a> <span style="color:#8b9299;font-size:12px">mzzj.sh.gov.cn</span></li><li style="margin:3px 0"><a href="https://www.bjdj.gov.cn/article/25414.html#1#1#1" target="_blank" rel="noreferrer noopener">北京组工</a> <span style="color:#8b9299;font-size:12px">bjdj.gov.cn</span></li><li style="margin:3px 0"><a href="https://www.qstheory.cn/llwx/2020-08/25/c_1126410146.htm" target="_blank" rel="noreferrer noopener">始终当好两个先锋队</a> <span style="color:#8b9299;font-size:12px">qstheory.cn</span></li><li style="margin:3px 0"><a href="http://dangjian.people.com.cn/n1/2020/0825/c117092-31835179.html" target="_blank" rel="noreferrer noopener">大家手笔：始终当好两个先锋队</a> <span style="color:#8b9299;font-size:12px">dangjian.people.com.cn</span></li><li style="margin:3px 0"><a href="https://m.ccdi.gov.cn/content/8c/75/4329.html" target="_blank" rel="noreferrer noopener">【党章故事】党的历史上对“两个先锋队”性质的表述-中央纪委网站</a> <span style="color:#8b9299;font-size:12px">m.ccdi.gov.cn</span></li><li style="margin:3px 0"><a href="http://theory.people.com.cn/big5/n/2015/0417/c387115-26861757.html" target="_blank" rel="noreferrer noopener">党的历史上对“两个先锋队”性质的表述</a> <span style="color:#8b9299;font-size:12px">theory.people.com.cn</span></li><li style="margin:3px 0"><a href="http://www.npc.gov.cn/c2/kgfb/202206/t20220630_318408.html#1" target="_blank" rel="noreferrer noopener">宣言：什么是中国共产党，中国共产党干什么</a> <span style="color:#8b9299;font-size:12px">npc.gov.cn</span></li><li style="margin:3px 0"><a href="http://www.hljtyzx.gov.cn/web/article/6a37a1a35d754e1fb84eafa5b6ea836b;JSESSIONID=08579d1b-3c43-45c5-adba-188f777c3c59#1" target="_blank" rel="noreferrer noopener">学习贯彻《中国共产党统一战线工作条例》</a> <span style="color:#8b9299;font-size:12px">hljtyzx.gov.cn</span></li><li style="margin:3px 0"><a href="http://www.hljtyzx.gov.cn/web/article/6a37a1a35d754e1fb84eafa5b6ea836b;JSESSIONID=fd8bb12c-6bd9-4e5d-bf82-a46b70252a98#1" target="_blank" rel="noreferrer noopener">学习贯彻《中国共产党统一战线工作条例》 - 当前位置：网站首页&gt;专题专栏&gt;学习贯彻《中国共产党统一战线工作条例》</a> <span style="color:#8b9299;font-size:12px">hljtyzx.gov.cn</span></li><li style="margin:3px 0"><a href="http://www.xztzb.gov.cn/news/1648799522958.shtml#1" target="_blank" rel="noreferrer noopener">中央统战部《党建》刊文：巩固发展大团结 携手共画“同心圆”</a> <span style="color:#8b9299;font-size:12px">xztzb.gov.cn</span></li><li style="margin:3px 0"><a href="https://www.sctyzx.gov.cn/ywdt/202101/54284267.html#1" target="_blank" rel="noreferrer noopener">中共中央印发《中国共产党统一战线工作条例》_四川统一战线_要闻</a> <span style="color:#8b9299;font-size:12px">sctyzx.gov.cn</span></li><li style="margin:3px 0"><a href="https://www.sctyzx.gov.cn/ddhzzs/202301/54292367.html#1#1" target="_blank" rel="noreferrer noopener">中国共产党统一战线工作条例_四川统一战线_统战工作_多党合作_多党合作知识</a> <span style="color:#8b9299;font-size:12px">sctyzx.gov.cn</span></li><li style="margin:3px 0"><a href="https://www.bjdj.gov.cn/rdztarticle/25417.html#1" target="_blank" rel="noreferrer noopener">北京市&quot;两学一做&quot;学习教育网</a> <span style="color:#8b9299;font-size:12px">bjdj.gov.cn</span></li></ol>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:8px">这一步的实际回答（联网后的完整输出）</div>
+      <div class="answer"><h4>核心解释</h4>
+<p>严格按这段原文，它只出现了一个组织的名称——<strong>中国共产党</strong>；原文并没有提到&quot;统战部&quot;或其他任何具体机构。本段给中国共产党设定的身份是&quot;统一战线的领导者&quot;，而不是在描述某个机构的职责。如果你问的其实是中央统战部，那属于<strong>原文之外</strong>的内容，需要另行补充说明。</p>
+<p>以下分层讲清楚。</p>
+<p>---</p>
+<h4>一、本段实际出现的&quot;机构&quot;：中国共产党</h4>
+<ul>
+<li><strong>规范全称</strong>：中国共产党。&quot;中共&quot;是简称。原文用的是&quot;中国共产党&quot;，即完整规范名称 [用户选中内容]。</li>
+<li><strong>本段赋予它的定位</strong>：统一战线是&quot;<strong>中国共产党领导的</strong>&quot;、以工农联盟为基础的联盟 [用户选中内容]。也就是说，在这条定义里，中国共产党是统一战线的领导主体。</li>
+<li><strong>本段对它作用的表述</strong>：统一战线是中国共产党&quot;凝聚人心、汇聚力量的政治优势和战略方针&quot;，是&quot;重要法宝&quot; [用户选中内容]。这里说的是&quot;统一战线&quot;这个东西对党有什么价值，不是列举党的机构职能。</li>
+</ul>
+<p><strong>关键点</strong>：这是一条<strong>定性条款</strong>，不是<strong>职权条款</strong>。它要解决的是&quot;统一战线是什么、是谁领导的&quot;,而不是&quot;哪个部门管统战工作&quot;。所以不写机构名不是遗漏，而是立法/立规技术的常规做法——机构职责一般放在其他条款或专门的党内文件中规定。</p>
+<p>---</p>
+<h4>二、如果说的是&quot;中央统战部&quot;（原文未提，属补充）</h4>
+<p>※ 补充，非原文：</p>
+<ul>
+<li><strong>规范全称</strong>：中共中央统一战线工作部，简称&quot;中央统战部&quot;，也写作&quot;中共中央统战部&quot;。</li>
+<li><strong>性质与职能</strong>：它是党中央主管统一战线工作的职能部门，即党中央在统战领域的办事/职能机关。</li>
+<li><strong>2018年党和国家机构改革后的调整</strong>：中央统战部的职责有所扩充，涉及宗教、侨务等领域（例如对外保留国家宗教事务局、国务院侨务办公室牌子等）。</li>
+<li>⚠️ <strong>时效提醒</strong>：上述机构设置与职责表述来自我对公开信息的既有了解，机构名称、牌子、归口关系近年可能有进一步调整，且我未能取得可逐字引用的官方正文（见下文检索说明）。<strong>请以中央统战部官网&quot;本部介绍&quot;等最新官方页面为准。</strong></li>
+</ul>
+<p><strong>本段与中央统战部的关系</strong>：本段只写&quot;中国共产党领导&quot;，没有写&quot;中央统战部&quot;。把二者等同起来是不准确的——党的领导是政治领导，具体工作由一个职能部门承担，二者不是同一层级的概念 [用户选中内容]。</p>
+<p>---</p>
+<h4>三、检索情况（如实说明）</h4>
+<p>为核对官方口径，检索到以下官方/权威来源的<strong>标题</strong>，但本次检索<strong>未返回正文内容</strong>，因此无法直接引用其原文表述：</p>
+<ul>
+<li>据资料 1：中央统战部官网&quot;本部介绍&quot;页（zytzb.gov.cn）</li>
+<li>据资料 2：人民网&quot;中央统战部主要职责&quot;页</li>
+<li>据资料 3：关于《中国共产党统一战线工作条例》印发（2021年1月转载报道）的相关页面</li>
+</ul>
+<p><strong>结论</strong>：未取得可逐字引用的官方原文。凡涉及该条例的发布/施行时间、中央统战部具体职责清单，我均按下文标注为补充内容，并提示可能已过时。</p>
+<p>---</p>
+<h4>四、顺带讲清本段里的术语</h4>
+<ul>
+<li><strong>统一战线</strong>：不同政治力量为共同目标结成的联盟。本段给出的是党内法规的定义，核心是&quot;中国共产党领导 + 以工农联盟为基础 + 四类人的联盟&quot; [用户选中内容]。</li>
+<li><strong>工农联盟</strong>：工人阶级与农民阶级的联盟。这是统一战线的基础，源于革命时期对阶级力量结构的判断 [用户选中内容]。</li>
+<li><strong>四类人的列举</strong>：全体社会主义劳动者、社会主义事业的建设者、拥护社会主义的爱国者、拥护祖国统一和致力于中华民族伟大复兴的爱国者 [用户选中内容]。</li>
+</ul>
+<p>  - ※ 补充，非原文：&quot;社会主义事业的建设者&quot;是后来（2002年前后提出、2004年宪法修正案写入）才进入统一战线表述的，用于涵盖民营科技企业创业人员、个体户、私营企业主等新社会阶层。<strong>若需准确年份，请另行核实。</strong></p>
+<ul>
+<li><strong>法宝</strong>：政治话语中的固定说法，指具有决定意义的重要手段。&quot;三大法宝&quot;的经典表述是统一战线、武装斗争、党的建设（这是毛泽东在1939年的提法，※ 补充，非原文）。</li>
+<li><strong>政治优势、战略方针</strong>：前者强调比较优势，后者强调长期性、全局性的行动方向 [用户选中内容]。</li>
+</ul>
+<p>---</p>
+<h4>五、需要注意的两点</h4>
+<ol>
+<li><strong>本条是《中国共产党统一战线工作条例》第二条</strong>，属于定义性条款；条例的具体施行时间、是否已有新版修订，我没有取得可引用的一手文本，<strong>不便给出确切日期</strong>。</li>
+<li>若你真正想问的是&quot;统战工作由谁具体负责&quot;，那答案不在本条，需要看该条例中涉及工作职责、机构设置的条款，以及其他党内文件。请把相关段落再划出来，我可以逐句讲。</li>
+</ol>
+<p>---</p>
+<blockquote>依据：用户选中内容（《中国共产党统一战线工作条例》第二条；用户未提供段落ID，无法按 [段落ID] 格式标注）</blockquote></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div style="font-size:13.5px;color:var(--ink2)">
+        <strong>怎么做的：</strong>桥接层给模型挂一个标准 <code>web_search</code> 函数，模型决定要不要调；
+        调了就由服务端执行检索，结果过一遍<strong>权威源白名单</strong>（默认 12 个官方域名）再回灌，最后据此作答。
+        检索走 <strong>DeepSeek 原生服务端搜索</strong>（Anthropic 兼容端点 + <code>web_search_20250305</code> 服务端工具，用同一把 API Key），
+        返回的是结构化结果块，不是从模型正文里扒 URL；没有拿到结果块就按错误处理，绝不凑数。
+      </div>
+      <div class="diff" style="margin-top:12px;background:var(--warn-soft);border-color:#f0dcc0">
+        <span>开启联网后，<strong>选中的文字会作为检索词发往搜索服务</strong>；内部文件请勿开启。</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="lib">
+    <h2 class="sec"><span class="num">07</span>文档库与批注持久化</h2>
+    <div class="grid g3">
+      <div class="feat">
+        <h3>文件夹归档</h3>
+        <p>可建多级文件夹；拖拽文件到面板即可上传，可选择目标文件夹。</p>
+      </div>
+      <div class="feat">
+        <h3>内容哈希去重</h3>
+        <p>同一份文件重复上传会命中同一条记录，不会产生副本，<strong>批注也不会因为重复上传而丢</strong>。</p>
+      </div>
+      <div class="feat">
+        <h3>批注随文档走</h3>
+        <p>批注与 AI 解释按文档独立存到服务端，切换文档互不干扰；已为将来的账号体系预留了归属维度。</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div style="font-size:13.5px;color:var(--ink2)">
+        <strong>数据放在哪：</strong>上传的文件、解析结果、批注都落在服务端
+        <code>data/users/&lt;用户&gt;/docs/&lt;文档ID&gt;/</code> 下，
+        其中批注是 Yjs 增量更新，可多端合并。文件夹名称会做安全清洗，从根上避免路径穿越。
+      </div>
+    </div>
+  </section>
+
+  <section id="test">
+    <h2 class="sec"><span class="num">08</span>质量保障</h2>
+    <p class="sub">以下数字都是在开发机上真实跑出来的，不是估算。合计 <strong>604</strong> 项检查。</p>
+    <div class="card">
+      <div class="test-row"><span class="nm">多格式解析器</span><span class="path">scripts/parser-test.mjs</span><span class="n">41/41</span></div>
+      <div class="test-row"><span class="nm">条文结构化抽取</span><span class="path">scripts/policy-extract-test.mjs</span><span class="n">33/33</span></div>
+      <div class="test-row"><span class="nm">检索层与原生 provider</span><span class="path">scripts/search-test.mjs</span><span class="n">158/158</span></div>
+      <div class="test-row"><span class="nm">agent 循环（离线）</span><span class="path">scripts/agent-loop-test.mjs</span><span class="n">50/50</span></div>
+      <div class="test-row"><span class="nm">文档管理 API</span><span class="path">scripts/files-api-test.mjs</span><span class="n">42/42</span></div>
+      <div class="test-row"><span class="nm">接口契约（真实模型）</span><span class="path">scripts/e2e-check.mjs --with-ai</span><span class="n">42/42</span></div>
+      <div class="test-row"><span class="nm">两档行为（真实模型）</span><span class="path">scripts/policy-compliance-test.mjs</span><span class="n">32/32</span></div>
+      <div class="test-row"><span class="nm">前端运行时冒烟</span><span class="path">scripts/smoke-render.mjs</span><span class="n">11/11</span></div>
+      <div class="test-row"><span class="nm">划词高亮全链路</span><span class="path">scripts/active-highlight-test.mjs</span><span class="n">11/11</span></div>
+      <div class="test-row"><span class="nm">设置页 / 档位 / 联网开关</span><span class="path">scripts/settings-ui-test.mjs</span><span class="n">52/52</span></div>
+      <div class="test-row"><span class="nm">文档库与引用识别</span><span class="path">scripts/library-ui-test.mjs</span><span class="n">53/53</span></div>
+      <div class="test-row"><span class="nm">AI 过程展示（时间线 / 来源 / 折叠）</span><span class="path">scripts/activity-timeline-test.mjs</span><span class="n">74/74</span></div>
+      <div class="test-row"><span class="nm">6 层递归追问</span><span class="path">scripts/deep-followup-test.mjs</span><span class="n">5/5</span></div>
+      <div style="margin-top:14px"><span class="badge-ok">全部通过</span></div>
+    </div>
+  </section>
+
+  <section id="run">
+    <h2 class="sec"><span class="num">09</span>怎么跑起来</h2>
+    <pre><span class="c"># 安装依赖</span>
+npm install
+
+<span class="c"># 配置模型 Key（复制后填入，Key 只存在服务端，不会下发到浏览器）</span>
+cp .env.example .env
+
+<span class="c"># 一键启动：桥接层 5178 + 前端 5179</span>
+npm run dev
+
+<span class="c"># 打开 http://localhost:5179</span></pre>
+    <div class="card" style="margin-top:14px">
+      <div style="font-size:13.5px;color:var(--ink2)">
+        <strong>使用要点：</strong>
+        ① 先在左侧上传文件（可拖拽）；② 点开文档，选中原文任意文字；
+        ③ 浮动条上选「添加批注」或「问 AI」；④ AI 解释里的编号点击即回跳原文。
+        <br><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> 提交提问，<span class="kbd">Esc</span> 取消。
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    智能解读工作台 · 功能演示　|　页面数据来自 统一战线工作条例-副本.wps 的实际解析与模型输出
+  </footer>
+</div>
+
+<script>
+// 点击引用编号时，闪一下原文里对应的段落，演示「回查」效果
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('.cite');
+  if (!el) return;
+  const ref = el.dataset.ref;
+  const target = [...document.querySelectorAll('.doc-text p')].find((p) => {
+    const id = p.querySelector('.pid')?.textContent?.trim() ?? '';
+    const body = p.textContent.trim();
+    return id === ref || body.startsWith(ref) || body.startsWith('第' + ref.replace(/^第|条$|章$/g, '') + '条');
+  });
+  if (target && target.scrollIntoView) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.remove('flash');
+    void target.offsetWidth;
+    target.classList.add('flash');
+    setTimeout(() => { target.classList.remove('sel'); }, 1400);
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+{
+  "name": "freadtool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "智能解读工作台 —— Tiptap + Yjs 划词批注，DeepSeek 流式溯源解读",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:server": "node --watch server/index.js",
+    "dev:web": "vite --config web/vite.config.js",
+    "dev": "concurrently -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web\"",
+    "build": "vite build --config web/vite.config.js",
+    "start": "node server/index.js",
+    "test": "node scripts/parser-test.mjs && node scripts/policy-extract-test.mjs && node scripts/search-test.mjs && node scripts/agent-loop-test.mjs && node scripts/e2e-check.mjs && npm run test:web",
+    "test:api": "node scripts/e2e-check.mjs",
+    "test:parser": "node scripts/parser-test.mjs && node scripts/policy-extract-test.mjs",
+    "test:search": "node scripts/search-test.mjs",
+    "test:files": "node scripts/files-api-test.mjs",
+    "test:web": "vite-node --config web/vite.config.js scripts/smoke-render.mjs && vite-node --config web/vite.config.js scripts/active-highlight-test.mjs && vite-node --config web/vite.config.js scripts/settings-ui-test.mjs && vite-node --config web/vite.config.js scripts/library-ui-test.mjs && vite-node --config web/vite.config.js scripts/activity-timeline-test.mjs && node scripts/deep-followup-test.mjs",
+    "test:ai": "node scripts/e2e-check.mjs --with-ai && node scripts/policy-compliance-test.mjs",
+    "test:stability": "node scripts/stream-stability-test.mjs 5",
+    "demo:data": "node scripts/gen-demo-data.mjs",
+    "demo": "node scripts/gen-demo-page.mjs"
+  },
+  "dependencies": {
+    "@pokapali/comments": "^0.1.2",
+    "@pokapali/comments-tiptap": "^0.1.2",
+    "@tiptap/extension-collaboration": "^2.11.5",
+    "@tiptap/pm": "^2.11.5",
+    "@tiptap/react": "^2.11.5",
+    "@tiptap/starter-kit": "^2.11.5",
+    "busboy": "^1.6.0",
+    "compression": "^1.7.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "fast-xml-parser": "^5.11.2",
+    "fflate": "^0.8.3",
+    "marked": "^15.0.7",
+    "pdfjs-dist": "^6.4.299",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "y-prosemirror": "^1.2.12",
+    "yjs": "^13.6.23"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "jsdom": "^26.0.0",
+    "vite": "^6.0.7",
+    "vite-node": "^3.0.0"
+  }
+}
