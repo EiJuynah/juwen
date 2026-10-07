@@ -227,6 +227,13 @@ export default function App() {
   const [activeId, setActiveId] = useState(null);
   const [filter, setFilter] = useState('all');
   const [showOrphans, setShowOrphans] = useState(true);
+  /**
+   * 「全部收起 / 全部展开」广播信号。
+   * 卡片自己的折叠态仍然是卡片内的 state（每条独立、默认值见 CommentCard：
+   * 流式中挂载展开、已完成收起），这里只发一个递增序号让所有卡片响应一次，
+   * seq === 0 表示还没点过，卡片保持各自的默认值。
+   */
+  const [collapseSignal, setCollapseSignal] = useState({ seq: 0, to: 'collapsed' });
   const [docReady, setDocReady] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 服务端设置。界面按服务端实际生效值展示，避免出现「显示已关闭、实际还开着」
@@ -677,16 +684,32 @@ export default function App() {
     setActiveId(id);
   };
 
-  const resolveToggle = (id) => {
-    const d = store.getData(id);
-    if (!d) return;
-    store.updateComment(id, { status: d.status === 'resolved' ? 'open' : 'resolved' });
+  /**
+   * 深入删除：连同整棵追问子树一起删。
+   * 注意 store.getComment() 返回的是底层**树节点**（带 children）；
+   * 侧边栏里的 comment 是 flatOrdered() 拍平后的对象，children 恒为空数组，
+   * 所以这里必须回 store 取原树，不能拿页面上的 comment.children 去数。
+   */
+  const collectSubtreeIds = (id) => {
+    const ids = [id];
+    const walk = (list) => {
+      for (const child of list ?? []) {
+        ids.push(child.id);
+        walk(child.children);
+      }
+    };
+    walk(store.getComment(id)?.children);
+    return ids;
   };
 
+  const countDescendants = (id) => collectSubtreeIds(id).length - 1;
+
   const removeComment = (id) => {
-    store.comments.delete(id);
-    if (selectedId === id) setSelectedId(null);
-    if (activeId === id) setActiveId(null);
+    const ids = collectSubtreeIds(id);
+    for (const x of ids) store.comments.delete(x);
+    const removed = new Set(ids);
+    if (selectedId != null && removed.has(selectedId)) setSelectedId(null);
+    if (activeId != null && removed.has(activeId)) setActiveId(null);
   };
 
   const jumpToParagraph = (pid) => {
@@ -744,13 +767,24 @@ export default function App() {
     return <div className="boot">正在载入文稿…</div>;
   }
 
+  // 「标记解决」已被移除：`data.status` 字段保留但**不再读取**——
+  // 历史批注里可能还留着 resolved，删掉控件后它们必须照常完整显示（不迁移、不隐藏、不划掉）。
   const visible = comments.filter((c) => {
     if (!c.anchor && !showOrphans) return false;
-    if (filter === 'open' && c.data?.status === 'resolved') return false;
     if (filter === 'ai' && c.data?.type === COMMENT_TYPES.HUMAN) return false;
     if (filter === 'human' && c.data?.type !== COMMENT_TYPES.HUMAN) return false;
     return true;
   });
+
+  // 「全部收起 / 全部展开」：按钮文案反映点击后会发生什么（seq === 0 时卡片还是各自默认值）
+  const allCollapsed = collapseSignal.seq > 0 && collapseSignal.to === 'collapsed';
+  const toggleAllCollapse = () => {
+    setCollapseSignal((s) => ({
+      seq: s.seq + 1,
+      // 第一次点一律是「收起」，之后按上一次的方向交替
+      to: s.seq > 0 && s.to === 'collapsed' ? 'expanded' : 'collapsed',
+    }));
+  };
 
   const orphanCount = comments.filter((c) => !c.anchor).length;
 
@@ -920,7 +954,6 @@ export default function App() {
             <div className="filters">
               {[
                 ['all', '全部', '显示全部条目：人工批注 + AI 解释 + 追问'],
-                ['open', '未解决', '只看尚未标记为「已解决」的条目'],
                 ['ai', 'AI 解释', '只看 AI 生成的解释与追问'],
                 ['human', '人工批注', '只看自己手动添加的批注'],
               ].map(([k, label, tip]) => (
@@ -934,6 +967,17 @@ export default function App() {
                   {label}
                 </button>
               ))}
+              {/* 至少有一条可见卡片时才出现；点一下把右栏全部收起（问题多时先扫标题） */}
+              {visible.length > 0 && (
+                <button
+                  type="button"
+                  className="collapse-all"
+                  onClick={toggleAllCollapse}
+                  title={allCollapsed ? '展开全部卡片' : '收起全部卡片'}
+                >
+                  {allCollapsed ? '全部展开' : '全部收起'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -974,8 +1018,9 @@ export default function App() {
                   setSelectedId(c.id);
                   setActiveId(c.threadRootId ?? c.id);
                 }}
-                onResolve={() => resolveToggle(c.id)}
                 onDelete={() => removeComment(c.id)}
+                descendantCount={countDescendants(c.id)}
+                collapseSignal={collapseSignal}
                 onJump={jumpToParagraph}
                 onFollowUp={(q) => followUp(c.id, q)}
                 depth={c.data?.depth ?? 0}
@@ -1317,18 +1362,24 @@ function CommentCard({
   selected,
   active,
   onSelect,
-  onResolve,
   onDelete,
+  // 整棵追问子树的条数（不含自己），用于「删除这条解读及其 N 条追问？」文案
+  descendantCount = 0,
+  // App 广播的「全部收起/展开」信号 { seq, to }
+  collapseSignal,
   onJump,
   onFollowUp,
   depth,
 }) {
   const d = comment.data || {};
   const isAI = d.type !== COMMENT_TYPES.HUMAN;
-  const resolved = d.status === 'resolved';
+  // 注意：历史上用过 data.status === 'resolved' 做「标记解决」，该控件已移除。
+  // 字段保留但不读取——旧批注即使带 resolved 也要完整显示（不划掉、不隐藏）。
   const [showReasoning, setShowReasoning] = useState(false);
   const [replying, setReplying] = useState(false);
   const [replyText, setReplyText] = useState('');
+  // 删除二次确认（卡片内联，不用 window.confirm：jsdom 不实现，也没法断言）
+  const [confirmDelete, setConfirmDelete] = useState(false);
   // 来源清单展开态：放在 CommentCard 内，所以每条注释各自独立
   const [showAllSources, setShowAllSources] = useState(false);
   /**
@@ -1336,8 +1387,32 @@ function CommentCard({
    *   · 流式中挂载 → 展开（用户要看着它出字），结束后也保持展开，由用户手动收起；
    *   · 刷新后加载到的「已完成」卡片 → 默认收起，问题一多时右栏才不至于被答案淹没。
    * 人工批注不折叠（本来就只有引用 + 批注文字），所以初值里带了 isAI 判断。
+   * 「全部收起/展开」只通过 collapseSignal 覆盖，不改变这里的默认值。
    */
   const [collapsed, setCollapsed] = useState(() => isAI && d.streaming !== true);
+
+  // 响应「全部收起/展开」：seq 递增即触发一次，to 决定方向。
+  // 两个前提：
+  //   1. 只作用于 AI 卡片——人工批注「不折叠」（它的正文就是全部内容，收起来等于看不到）；
+  //   2. 挂载时就已经存在的 seq 记为「已消费」，否则点过「全部收起」之后新建的流式卡片
+  //      会在挂载后被立刻收起，违反「流式中挂载默认展开」（task-6）。
+  const seenCollapseSeq = useRef(collapseSignal?.seq ?? 0);
+  useEffect(() => {
+    if (!isAI) return;
+    if (!collapseSignal?.seq || collapseSignal.seq === seenCollapseSeq.current) return;
+    seenCollapseSeq.current = collapseSignal.seq;
+    setCollapsed(collapseSignal.to === 'collapsed');
+  }, [collapseSignal, isAI]);
+
+  // 确认条打开时按 Escape 相当于「取消」
+  useEffect(() => {
+    if (!confirmDelete) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setConfirmDelete(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [confirmDelete]);
 
   const html = useMemo(() => {
     if (!comment.content) return '';
@@ -1360,7 +1435,7 @@ function CommentCard({
 
   return (
     <div
-      className={`card ${selected ? 'sel' : ''} ${active ? 'act' : ''} ${resolved ? 'res' : ''} ${collapsed ? 'is-collapsed' : ''}`.trim()}
+      className={`card ${selected ? 'sel' : ''} ${active ? 'act' : ''} ${collapsed ? 'is-collapsed' : ''}`.trim()}
       data-kind={isAI ? 'ai' : 'human'}
       onClick={onSelect}
       style={depth > 0 ? { marginLeft: Math.min(depth, 3) * 14 } : undefined}
@@ -1375,13 +1450,38 @@ function CommentCard({
           </button>
         )}
         <span className="spacer" />
-        <button className="ic" title={resolved ? '重新打开' : '标记解决'} onClick={(e) => { e.stopPropagation(); onResolve(); }}>
-          {resolved ? '↺' : '✓'}
-        </button>
-        <button className="ic" title="删除" onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+        {/* 「标记解决」已按用户反馈移除：会回看，不需要划掉。只保留删除，且删除前要确认 */}
+        <button
+          type="button"
+          className="ic"
+          title="删除"
+          onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+        >
           ×
         </button>
       </div>
+
+      {confirmDelete && (
+        <div className="del-confirm" onClick={(e) => e.stopPropagation()}>
+          <span className="del-text">
+            {descendantCount > 0 ? `删除这条解读及其 ${descendantCount} 条追问？` : '删除这条解读？'}
+          </span>
+          <button
+            type="button"
+            className="del-yes"
+            onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); onDelete(); }}
+          >
+            删除
+          </button>
+          <button
+            type="button"
+            className="del-no"
+            onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
+          >
+            取消
+          </button>
+        </div>
+      )}
 
       {/*
         引用块：一眼看出这条批注/解读针对的是哪段原文（用户反馈：现在必须回头看正文才知道）。
@@ -1507,7 +1607,7 @@ function CommentCard({
         </div>
       )}
 
-      {isAI && !resolved && (
+      {isAI && (
         <div className="card-foot" onClick={(e) => e.stopPropagation()}>
           {replying ? (
             <div className="reply-box">

@@ -472,6 +472,132 @@ console.log('\n▸ 挂载时已完成的卡片默认收起');
   await tick(200);
 }
 
+console.log('\n▸ 「标记解决」已彻底移除');
+{
+  const titles = [...container.querySelectorAll('.card button')].map((b) => b.getAttribute('title') ?? '');
+  check('卡片上没有「标记解决」按钮', !titles.some((t) => t.includes('标记解决')), titles.join(' | '));
+  check('卡片上也没有「重新打开」按钮', !titles.some((t) => t.includes('重新打开')), titles.join(' | '));
+  // 旧数据里的 data.status 不再被读取：不能再有 .res 类与答案删除线
+  check('卡片不带 res 类', !container.querySelector('.card.res'));
+  check('卡片 html 里没有「已解决」残留', !container.querySelector('.comment-list')?.innerHTML.includes('已解决'));
+}
+
+console.log('\n▸ 侧栏筛选只剩 3 项');
+{
+  const filters = [...container.querySelectorAll('.filter')];
+  check('筛选按钮恰好 3 个（「全部收起」不算筛选）', filters.length === 3, filters.map((f) => f.textContent.trim()).join(' | '));
+  check('筛选文本不含「未解决」', !filters.some((f) => f.textContent.includes('未解决')), filters.map((f) => f.textContent.trim()).join(' | '));
+  check('筛选仍是 全部 / AI 解释 / 人工批注', filters.map((f) => f.textContent.trim()).join(',') === '全部,AI 解释,人工批注', filters.map((f) => f.textContent.trim()).join(','));
+}
+
+console.log('\n▸ 删除需要二次确认（内联确认条，不用 window.confirm）');
+{
+  const store = dbg()?.store;
+  const id = store?.addComment({
+    content: '待删除的独立解读。',
+    type: 'ai-explanation',
+    paragraphId: 'P-1-2',
+    anchorText: '第二条',
+    question: '待删除用例',
+  });
+  await tick(400);
+
+  const pick = () => [...container.querySelectorAll('.card')].find((el) => el.textContent.includes('待删除用例'));
+  const delBtn = () => pick()?.querySelector('button.ic[title="删除"]');
+  check('独立卡片已挂载', Boolean(pick()));
+  check('未点删除时不显示确认条', !pick()?.querySelector('.del-confirm'));
+
+  delBtn()?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(200);
+  check('点 × 后出现确认条', Boolean(pick()?.querySelector('.del-confirm')));
+  check('确认文案为「删除这条解读？」', (pick()?.querySelector('.del-text')?.textContent ?? '').includes('删除这条解读？'), pick()?.querySelector('.del-text')?.textContent);
+  check('确认前数据仍在（只是问一句）', Boolean(store?.getComment(id)));
+
+  pick()?.querySelector('.del-no')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(200);
+  check('点「取消」后确认条消失', !pick()?.querySelector('.del-confirm'));
+  check('取消后注释仍在', Boolean(store?.getComment(id)));
+  check('取消后卡片仍在', Boolean(pick()));
+
+  delBtn()?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(200);
+  pick()?.querySelector('.del-yes')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(250);
+  check('点「删除」后注释真的被删', !store?.getComment(id));
+  check('点「删除」后卡片消失', !pick());
+}
+
+console.log('\n▸ 删除会连带整棵追问子树');
+{
+  const store = dbg()?.store;
+  const rootId = store?.addComment({
+    content: '带追问的根解读。',
+    type: 'ai-explanation',
+    paragraphId: 'P-1-2',
+    anchorText: '第二条',
+    question: '带追问的根',
+  });
+  const childId = store?.addComment({
+    content: '追问的回答。',
+    type: 'ai-followup',
+    parentId: rootId,
+    paragraphId: 'P-1-2',
+    question: '子追问一号',
+    depth: 1,
+  });
+  await tick(400);
+
+  const pickRoot = () => [...container.querySelectorAll('.card')].find((el) => el.textContent.includes('带追问的根'));
+  const pickChild = () => [...container.querySelectorAll('.card')].find((el) => el.textContent.includes('子追问一号'));
+  check('父子两条卡片都挂载了', Boolean(pickRoot()) && Boolean(pickChild()));
+
+  pickRoot()?.querySelector('button.ic[title="删除"]')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(200);
+  const text = pickRoot()?.querySelector('.del-text')?.textContent ?? '';
+  check('确认文案包含「1 条追问」', text.includes('1 条追问'), text);
+
+  pickRoot()?.querySelector('.del-yes')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(250);
+  check('确认后根注释被删', !store?.getComment(rootId));
+  check('确认后追问也一起被删（子树清空）', !store?.getComment(childId));
+  check('确认后两张卡片都消失', !pickRoot() && !pickChild());
+}
+
+console.log('\n▸ 「全部收起 / 全部展开」');
+{
+  const store = dbg()?.store;
+  // 再加一条人工批注：人工批注不折叠（正文就是全部内容），不应被「全部收起」藏起来
+  const humanId = store?.addComment({
+    content: '人工批注的正文，必须始终可见。',
+    type: 'human',
+    paragraphId: 'P-1-2',
+    anchorText: '第二条',
+  });
+  await tick(400);
+
+  const cards = () => [...container.querySelectorAll('.card')];
+  const aiCards = () => cards().filter((c) => c.getAttribute('data-kind') === 'ai');
+  const humanCard = () => cards().find((c) => c.getAttribute('data-kind') === 'human');
+  const allBtn = () => container.querySelector('.collapse-all');
+
+  check('人工批注卡片已在侧栏', Boolean(humanCard()));
+  check('有可见卡片时出现「全部收起」按钮', Boolean(allBtn()) && allBtn()?.textContent.trim() === '全部收起', allBtn()?.textContent);
+
+  allBtn()?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(250);
+  check('点后所有 AI 卡片都带 is-collapsed', aiCards().length > 0 && aiCards().every((c) => c.classList.contains('is-collapsed')), aiCards().map((c) => c.className).join(' | '));
+  check('人工批注不被收起（正文仍可见）', !humanCard()?.classList.contains('is-collapsed') && Boolean(humanCard()?.querySelector('.md')));
+  check('按钮文案变为「全部展开」', allBtn()?.textContent.trim() === '全部展开', allBtn()?.textContent);
+
+  allBtn()?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(250);
+  check('再点后所有卡片都展开', cards().every((c) => !c.classList.contains('is-collapsed')), cards().map((c) => c.className).join(' | '));
+  check('按钮文案变回「全部收起」', allBtn()?.textContent.trim() === '全部收起', allBtn()?.textContent);
+
+  store?.comments.delete(humanId);
+  await tick(200);
+}
+
 root.unmount();
 console.log(`\n结果：${pass} 通过 / ${fail} 失败\n`);
 process.exit(fail ? 1 : 0);

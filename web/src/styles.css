@@ -579,6 +579,19 @@ button { font: inherit; cursor: pointer; }
 .filter:hover { border-color: #c8ced6; }
 .filter.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+/* 「全部收起 / 全部展开」：小号文字按钮，靠右，不与筛选条挤在一起 */
+.collapse-all {
+  margin-left: auto;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.collapse-all:hover { border-color: var(--accent); color: var(--accent); }
+
 .orphan-toggle {
   flex: none;
   display: flex;
@@ -625,8 +638,8 @@ button { font: inherit; cursor: pointer; }
 .card[data-kind="human"] { border-left-color: var(--accent); }
 .card.sel { box-shadow: 0 0 0 2px rgba(47, 111, 219, .18); }
 .card.act { background: #fcfdff; }
-.card.res { opacity: .58; }
-.card.res .md { text-decoration: line-through; text-decoration-color: #cfd6de; }
+/* 「标记解决」已移除：不再有 .card.res 与答案删除线样式。
+   历史数据里的 data.status 不再被读取，旧卡片照常完整显示、不划掉。 */
 
 .card-head { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
 
@@ -735,6 +748,34 @@ button { font: inherit; cursor: pointer; }
   line-height: 1.7;
 }
 .card-collapse:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 删除二次确认条（卡片内联，不用 window.confirm） */
+.del-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  padding: 6px 9px;
+  border: 1px solid #f0c9c1;
+  border-radius: 6px;
+  background: #fdf3f1;
+}
+.del-text { flex: 1; min-width: 0; color: #b03a26; font-size: 12px; line-height: 1.6; }
+.del-yes, .del-no {
+  flex: none;
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+.del-yes { border-color: #d9503a; background: #d9503a; color: #fff; }
+.del-yes:hover { background: #c4432f; border-color: #c4432f; }
+.del-no:hover { border-color: #c8ced6; color: var(--ink); }
 
 /* 收起态：右栏只剩「卡片头 + 引用 + 问题 + 展开提示」 */
 .card.is-collapsed { padding-bottom: 9px; }
